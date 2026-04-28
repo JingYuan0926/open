@@ -1,5 +1,8 @@
 import hardhatToolboxViemPlugin from "@nomicfoundation/hardhat-toolbox-viem";
 import { configVariable, defineConfig } from "hardhat/config";
+import { config as loadEnv } from "dotenv";
+
+loadEnv();
 
 export default defineConfig({
   plugins: [hardhatToolboxViemPlugin],
@@ -38,7 +41,7 @@ export default defineConfig({
       type: "http",
       chainType: "l1",
       url: "https://evmrpc-testnet.0g.ai",
-      chainId: 16601,
+      chainId: 16602,
       accounts: [configVariable("0G_PRIVATE_KEY")],
     },
   },
