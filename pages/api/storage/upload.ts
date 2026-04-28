@@ -1,5 +1,5 @@
 import type { NextApiRequest, NextApiResponse } from "next";
-import { Indexer, ZgFile } from "@0glabs/0g-ts-sdk";
+import { Indexer, ZgFile } from "@0gfoundation/0g-ts-sdk";
 import { ethers } from "ethers";
 import fs from "fs";
 import path from "path";
@@ -17,11 +17,11 @@ export default async function handler(
     return res.status(405).json({ success: false, error: "Method not allowed" });
   }
 
-  const privateKey = process.env.ZG_STORAGE_PRIVATE_KEY;
+  const privateKey = process.env["0G_PRIVATE_KEY"];
   if (!privateKey) {
     return res.status(500).json({
       success: false,
-      error: "Missing ZG_STORAGE_PRIVATE_KEY in .env.local",
+      error: "Missing 0G_PRIVATE_KEY in .env.local",
     });
   }
 

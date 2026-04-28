@@ -1,7 +1,7 @@
 import type { NextApiRequest, NextApiResponse } from "next";
 import { createPublicClient, http } from "viem";
 import { SPARKINFT_ADDRESS, SPARKINFT_ABI } from "@/lib/sparkinft-abi";
-import { Indexer } from "@0glabs/0g-ts-sdk";
+import { Indexer } from "@0gfoundation/0g-ts-sdk";
 import { readFileSync, unlinkSync } from "fs";
 import { join } from "path";
 import { tmpdir } from "os";

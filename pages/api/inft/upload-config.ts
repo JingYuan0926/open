@@ -1,6 +1,6 @@
 import type { NextApiRequest, NextApiResponse } from "next";
 import { ethers } from "ethers";
-import { ZgFile, Indexer } from "@0glabs/0g-ts-sdk";
+import { ZgFile, Indexer } from "@0gfoundation/0g-ts-sdk";
 import { writeFileSync, unlinkSync } from "fs";
 import { join } from "path";
 import { tmpdir } from "os";
@@ -38,11 +38,11 @@ export default async function handler(
     return res.status(400).json({ error: "Missing modelProvider" });
   }
 
-  const privateKey = process.env.ZG_STORAGE_PRIVATE_KEY;
+  const privateKey = process.env["0G_PRIVATE_KEY"];
   if (!privateKey || privateKey === "YOUR_PRIVATE_KEY_HERE") {
     return res
       .status(500)
-      .json({ error: "ZG_STORAGE_PRIVATE_KEY not configured in .env.local" });
+      .json({ error: "0G_PRIVATE_KEY not configured in .env.local" });
   }
 
   try {

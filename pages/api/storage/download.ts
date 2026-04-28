@@ -1,5 +1,5 @@
 import type { NextApiRequest, NextApiResponse } from "next";
-import { Indexer } from "@0glabs/0g-ts-sdk";
+import { Indexer } from "@0gfoundation/0g-ts-sdk";
 import fs from "fs";
 import path from "path";
 import os from "os";

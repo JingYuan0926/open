@@ -16,9 +16,9 @@ let brokerPromise: ReturnType<typeof createZGComputeNetworkBroker> | null = null
 export function getComputeBroker() {
   if (brokerPromise) return brokerPromise;
 
-  const privateKey = process.env.ZG_STORAGE_PRIVATE_KEY;
+  const privateKey = process.env["0G_PRIVATE_KEY"];
   if (!privateKey) {
-    throw new Error("Missing ZG_STORAGE_PRIVATE_KEY in .env.local");
+    throw new Error("Missing 0G_PRIVATE_KEY in .env.local");
   }
 
   const provider = new ethers.JsonRpcProvider(ZG_RPC);

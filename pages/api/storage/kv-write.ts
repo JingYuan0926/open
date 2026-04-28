@@ -1,5 +1,5 @@
 import type { NextApiRequest, NextApiResponse } from "next";
-import { Indexer } from "@0glabs/0g-ts-sdk";
+import { Indexer } from "@0gfoundation/0g-ts-sdk";
 import { ethers } from "ethers";
 
 const RPC_URL = "https://evmrpc-testnet.0g.ai";
@@ -13,11 +13,11 @@ export default async function handler(
     return res.status(405).json({ success: false, error: "Method not allowed" });
   }
 
-  const privateKey = process.env.ZG_STORAGE_PRIVATE_KEY;
+  const privateKey = process.env["0G_PRIVATE_KEY"];
   if (!privateKey) {
     return res.status(500).json({
       success: false,
-      error: "Missing ZG_STORAGE_PRIVATE_KEY in .env.local",
+      error: "Missing 0G_PRIVATE_KEY in .env.local",
     });
   }
 
@@ -49,7 +49,7 @@ export default async function handler(
     const tmpFile = path.join(os.tmpdir(), `spark-kv-${Date.now()}.json`);
     fs.writeFileSync(tmpFile, content, "utf-8");
 
-    const { ZgFile } = await import("@0glabs/0g-ts-sdk");
+    const { ZgFile } = await import("@0gfoundation/0g-ts-sdk");
     const zgFile = await ZgFile.fromFilePath(tmpFile);
     const [merkleTree, treeErr] = await zgFile.merkleTree();
 

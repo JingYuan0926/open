@@ -39,7 +39,7 @@ export default defineConfig({
       chainType: "l1",
       url: "https://evmrpc-testnet.0g.ai",
       chainId: 16601,
-      accounts: [configVariable("ZG_TESTNET_PRIVATE_KEY")],
+      accounts: [configVariable("0G_PRIVATE_KEY")],
     },
   },
 });

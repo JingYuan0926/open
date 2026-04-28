@@ -9,8 +9,8 @@ const TAG_LENGTH = 16;
  * Uses SHA-256 hash of the private key as the encryption key.
  */
 function deriveKey(): Buffer {
-  const secret = process.env.ZG_STORAGE_PRIVATE_KEY;
-  if (!secret) throw new Error("ZG_STORAGE_PRIVATE_KEY not set");
+  const secret = process.env["0G_PRIVATE_KEY"];
+  if (!secret) throw new Error("0G_PRIVATE_KEY not set");
   return crypto.createHash("sha256").update(secret).digest();
 }
 
