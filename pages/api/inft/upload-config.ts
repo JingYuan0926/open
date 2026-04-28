@@ -106,7 +106,10 @@ export default async function handler(
       rootHash,
       txHash: "txHash" in uploadResult ? uploadResult.txHash : uploadResult.txHashes[0],
       // Return config without the API key for frontend display
-      config: { ...agentConfig, apiKey: `${apiKey.slice(0, 8)}...` },
+      config: {
+        ...agentConfig,
+        ...(apiKey ? { apiKey: `${apiKey.slice(0, 8)}...` } : {}),
+      },
     });
   } catch (err: unknown) {
     return res.status(500).json({
