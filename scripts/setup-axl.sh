@@ -107,13 +107,44 @@ else
   say "Reusing existing axl/private.pem"
 fi
 
-# ---------- 8. Write node-config.json from peers.json + MACHINE_ROLE ----------
-SPECTATOR_IP=$(jq -r '.spectator.lanIp' "$PEERS")
+# ---------- 8. Determine LAN IPs ----------
+# Auto-detect own LAN IP (en0 = WiFi on most Macs; fallback en1).
+detect_lan_ip() {
+  local ip
+  ip=$(ifconfig getifaddr en0 2>/dev/null || true)
+  if [[ -z "$ip" ]]; then
+    ip=$(ifconfig getifaddr en1 2>/dev/null || true)
+  fi
+  if [[ -z "$ip" ]]; then
+    ip=$(ifconfig | awk '/inet 192\.168\./ {print $2; exit}')
+  fi
+  echo "$ip"
+}
+
+OWN_IP=$(detect_lan_ip)
 SPECTATOR_LISTEN_PORT=7001
 API_PORT=$(jq -r ".\"$ROLE\".apiPort" "$PEERS")
 
-if [[ -z "$SPECTATOR_IP" || "$SPECTATOR_IP" == "null" ]]; then
-  die "axl/peers.json is missing spectator.lanIp. Fill it in first."
+if [[ "$ROLE" == "spectator" ]]; then
+  if [[ -z "$OWN_IP" ]]; then
+    die "Couldn't auto-detect this Mac's LAN IP. Set it manually:
+         OWN_IP=192.168.x.x MACHINE_ROLE=spectator npm run axl:setup"
+  fi
+  SPECTATOR_IP="$OWN_IP"
+  say "Auto-detected spectator's LAN IP: \033[1;32m$SPECTATOR_IP\033[0m"
+  say "Share this IP with the agent Macs (Discord). They'll need it as SPECTATOR_IP env var."
+else
+  # Agent role — must be told the spectator's IP via env var.
+  if [[ -z "${SPECTATOR_IP:-}" ]]; then
+    die "Agents need the spectator's LAN IP. Re-run with:
+         SPECTATOR_IP=192.168.x.x MACHINE_ROLE=$ROLE npm run axl:setup
+         (Get the IP from the spectator's setup output / Discord.)"
+  fi
+  # Sanity check: looks like an IPv4?
+  if ! [[ "$SPECTATOR_IP" =~ ^([0-9]{1,3}\.){3}[0-9]{1,3}$ ]]; then
+    die "SPECTATOR_IP doesn't look like an IPv4: '$SPECTATOR_IP'"
+  fi
+  say "Will peer to spectator at \033[1;32mtls://$SPECTATOR_IP:$SPECTATOR_LISTEN_PORT\033[0m"
 fi
 
 CONFIG="$ROOT/axl/node-config.json"
