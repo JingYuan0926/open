@@ -1,0 +1,962 @@
+Hello and welcome to the ⁠partner-gensyn  channel 
+Feel free to reach out to the Gensyn Team at any point with your questions!
+
+ About,
+Gensyn is building open infrastructure for AI. AXL is our peer-to-peer network node: a single binary that gives your applications an encrypted, decentralised communication layer. No servers, no cloud, no accounts. Your app talks to localhost, and AXL handles encryption, routing, and peer discovery across the mesh. AXL ships with built-in MCP and A2A support for structured agent-to-agent communication, and everything is end-to-end encrypted by default. Any language that can make HTTP requests can use it. For this hackathon, we're looking for builders who want to push what's possible when AI agents communicate peer-to-peer with no central coordinator.
+
+ Prizes,
+ Best Application of Agent eXchange Layer (AXL) 
+1st Place: $2500 x 1 team
+2nd Place: $1500 x 1 team
+3rd Place: $1000 x 1 team
+
+↓ Full Prize Breakdown and List of Resources here ↓
+https://ethglobal.com/events/openagents/prizes/gensyn
+
+2
+
+1
+Add Reaction
+:thumbsup::skin-tone-1:
+Click to react
+:white_check_mark:
+Click to react
+:sob:
+Click to react
+Add Reaction
+Reply
+Forward
+More
+20 April 2026
+
+N I K H I L — 20/04/2026, 20:10Monday, 20 April 2026 at 20:10
+Heyy gensyn dev team! Is there any way i could schedule a meet with you guys to validate my idea?
+
+@N I K H I L
+Heyy gensyn dev team! Is there any way i could schedule a meet with you guys to validate my idea?
+
+johnnyd9720 — 20/04/2026, 21:19Monday, 20 April 2026 at 21:19
+Hi Nikhil, we will be hosting regular office hours once the hackathon opens. That may be the best place to discuss
+
+N I K H I L — 20/04/2026, 22:54Monday, 20 April 2026 at 22:54
+@johnnyd9720 awesome, will attend the office hours soon then!
+
+1
+Add Reaction
+22 April 2026
+
+Hitakshi — 22/04/2026, 17:49Wednesday, 22 April 2026 at 17:49
+hey gensyn team i was looking over a lot of AXL docs and examples , would you guys be ok with a idea which is more focused on swarm of AI workloads, on different machines or do you guys prefer projects should be agents and not any ai workload
+
+@Hitakshi
+hey gensyn team i was looking over a lot of AXL docs and examples , would you guys be ok with a idea which is more focused on swarm of AI workloads, on different machines or do you guys prefer projects should be agents and not any ai workload
+
+johnnyd9720 — 22/04/2026, 20:30Wednesday, 22 April 2026 at 20:30
+Hi Hitakshi, a swarm of AI workloads sounds interesting! We want you to build whatever you are most interested in working on. The only two requirements are that it must use AXL and must demonstrate inter-process communication. Other than those two, we want you to build what you are most excited about 
+
+1
+Add Reaction
+23 April 2026
+
+N I K H I L — 23/04/2026, 19:47Thursday, 23 April 2026 at 19:47
+@johnnyd9720
+Hey johnny! I am building on AXL for the Open Agents hackathon and wanted to share my project for some feedback.
+
+The project is called Zwarm. It's solving a problem I've hit personally with DeFi, which is that managing positions across Aave, Morpho, Compound, and Spark is exhausting. You're constantly checking yields and rebalancing. Existing bots help but they're either centralized servers that can be shut down or black boxes where you can't verify what they actually decided.
+
+Zwarm is a network of three specialist agents that collaborate to manage portfolios autonomously. There's an executor, a seeker, and a critic, each running as its own separate AXL node. AXL is the entire communication backbone.
+
+The executor monitors positions and makes rebalancing decisions using TEE-verified inference on 0G Compute, storing every decision with proofs on 0G Storage. Once it builds a track record, it broadcasts strategy availability across the mesh using GossipSub.
+
+The seeker listens for those broadcasts. When it finds a strategy matching its risk profile, it queries the publisher over A2A for the track record, verifies the proofs on 0G Storage, and subscribes through KeeperHub's marketplace where the logic stays private. Payments flow agent-to-agent via x402.
+
+The critic uses Convergecast to aggregate performance data across the network and publishes ratings back to the mesh. It just observes and rates.
+
+So I'm using AXL across four protocols- Send/Recv, A2A, MCP routing, Convergecast with three separate nodes communicating in real time. The whole point is showing an agent economy can exist without a central coordinator.
+
+Two questions. For Convergecast, are there reference examples beyond the python-client one you'd recommend? I want the critic's aggregation to feel real, not stubbed.
+
+I'm also running all three nodes on one machine for the demo with different ports and keys. Anything to watch for when peering local vs separate machines?
+
+Lucifer — 23/04/2026, 20:19Thursday, 23 April 2026 at 20:19
+Hey Gensyn team, do the docs link not work presented on the partner prizes webpage?
+
+Suganthan [FHE], FHE — 23/04/2026, 20:35Thursday, 23 April 2026 at 20:35
+hey @johnnyd9720 i would like share my idea , can i dm you privately? (edited)Thursday, 23 April 2026 at 20:36
+
+Lucifer
+Hey Gensyn team, do the docs link not work presented on the partner prizes webpage?
+
+Lucifer — 23/04/2026, 20:52Thursday, 23 April 2026 at 20:52
+Hey @johnnyd9720 , kindly check this out, plus, can I also dm you and run my idea by you?
+
+@N I K H I L
+@johnnyd9720   Hey johnny! I am building on AXL for the Open Agents hackathon and wanted to share my project for some feedback.  The project is called Zwarm. It's solving a problem I've hit personally with DeFi, which is that managing positions across Aave, Morpho, Compound, and Spark is exhausting. You're constantly checking yields and rebalancing. Existing bots help but they're either centralized servers that can be shut down or black boxes where you can't verify what they actually decided.  Zwarm is a network of three specialist agents that collaborate to manage portfolios autonomously. There's an executor, a seeker, and a critic, each running as its own separate AXL node. AXL is the entire communication backbone.  The executor monitors positions and makes rebalancing decisions using TEE-verified inference on 0G Compute, storing every decision with proofs on 0G Storage. Once it builds a track record, it broadcasts strategy availability across the mesh using GossipSub.  The seeker listens for those broadcasts. When it finds a strategy matching its risk profile, it queries the publisher over A2A for the track record, verifies the proofs on 0G Storage, and subscribes through KeeperHub's marketplace where the logic stays private. Payments flow agent-to-agent via x402.  The critic uses Convergecast to aggregate performance data across the network and publishes ratings back to the mesh. It just observes and rates.  So I'm using AXL across four protocols- Send/Recv, A2A, MCP routing, Convergecast with three separate nodes communicating in real time. The whole point is showing an agent economy can exist without a central coordinator.  Two questions. For Convergecast, are there reference examples beyond the python-client one you'd recommend? I want the critic's aggregation to feel real, not stubbed.  I'm also running all three nodes on one machine for the demo with different ports and keys. Anything to watch for when peering local vs separate machines?
+
+johnnyd9720 — 23/04/2026, 21:01Thursday, 23 April 2026 at 21:01
+Hey Nikhil, that sounds awesome! My one point of feedback is: be careful with the convergecast, it may not behave as you expect.  If you run your network over the gensyn public peer nodes, the topology of the network will be rebalanced very frequently and so tree type reductions may not converge as expected.  It should be more stable if you host your own network with just your agents participating. In that case there won't be ephemeral nodes and so the topology is static.  The easiest thing may be to sketch out the project just using send/recv, and if you get an implementation that works reliably and want to add in x402 or some other middleware, then package the software behind an MCP server.  But thats just a suggestion 
+[21:04]Thursday, 23 April 2026 at 21:04
+As an aside, a2a-sdk updated to v1.0 yesterday, so I am going to migrate the a2a integration over in the AXL repo today
+
+@Lucifer
+Hey Gensyn team, do the docs link not work presented on the partner prizes webpage?
+
+johnnyd9720 — 23/04/2026, 21:06Thursday, 23 April 2026 at 21:06
+Hey Lucifer, sorry about that! looking into it right now
+
+@Suganthan
+ [FHE], FHE
+hey @johnnyd9720 i would like share my idea , can i dm you privately? (edited)Thursday, 23 April 2026 at 20:36
+
+johnnyd9720 — 23/04/2026, 21:08Thursday, 23 April 2026 at 21:08
+per DMs, the ETHGlobal recommendation is to keep the chat in the discord channel.  you can send your idea over if you like, but the best way to guarentee a discussion is to attend the office hours which we are in the process of scheduling
+
+@Lucifer
+Hey Gensyn team, do the docs link not work presented on the partner prizes webpage?
+
+johnnyd9720 — 23/04/2026, 21:42Thursday, 23 April 2026 at 21:42
+Is the link working for you now? You may need to clear your browser cache
+
+@johnnyd9720
+Is the link working for you now? You may need to clear your browser cache
+
+Lucifer — 23/04/2026, 22:05Thursday, 23 April 2026 at 22:05
+Yep working, thanks!
+
+1
+Add Reaction
+[22:06]Thursday, 23 April 2026 at 22:06
+Unable to DM you
+[22:09]Thursday, 23 April 2026 at 22:09
+Anyways, here's my idea for a quick review, and possible loops I am missing if you could point out @johnnyd9720
+[22:09]Thursday, 23 April 2026 at 22:09
+So, basically, agents negotiating trades on public mempools get rekt by MEV. My idea allows agents to negotiate block trades entirely off-chain (via Gensyn AXL's encrypted P2P network) and only hit the blockchain for the final settlement
+[22:10]Thursday, 23 April 2026 at 22:10
+I’m focusing directly on your inter-process communication requirement. I will run two separate Node.js processes (a Buyer Agent and a Seller Agent). They will both connect to the local AXL HTTP bridge to securely negotiate prices and exchange EIP-712 trade signatures over your P2P mesh network. Once an agreement is reached via AXL, the dual-signed payload is routed to KeeperHub for on-chain execution
+[22:11]Thursday, 23 April 2026 at 22:11
+Quick questions for you:-
+1) For testing two separate agent processes locally, what is the optimal node-config.json (I intend on using node.js) setup to ensure they discover each other on the mesh instantly?
+2) For the negotiation phase, is it better to use AXL's broadcast feature to announce trade intents to the whole swarm, or is there a preferred way to establish a direct 1-to-1 peer connection once they start haggling?
+
+@Lucifer
+I’m focusing directly on your inter-process communication requirement. I will run two separate Node.js processes (a Buyer Agent and a Seller Agent). They will both connect to the local AXL HTTP bridge to securely negotiate prices and exchange EIP-712 trade signatures over your P2P mesh network. Once an agreement is reached via AXL, the dual-signed payload is routed to KeeperHub for on-chain execution
+
+johnnyd9720 — 23/04/2026, 22:43Thursday, 23 April 2026 at 22:43
+1) each process will need to use its own node-config.json and launch the executable.  This page: https://docs.gensyn.ai/tech/agent-exchange-layer/configuration, has an example of how to change the node-config for the second node running on the same machine
+2) If you are using just two nodes and no a-priori that you want them to communicate, I would send directly from 1 to the other using send/recv and the peerId of the recipient.  It should print to screen when you start the node.  https://docs.gensyn.ai/tech/agent-exchange-layer/examples-and-building#pattern-1-send-recv-fire-and-forget
+
+@johnnyd9720
+Hey Nikhil, that sounds awesome! My one point of feedback is: be careful with the convergecast, it may not behave as you expect.  If you run your network over the gensyn public peer nodes, the topology of the network will be rebalanced very frequently and so tree type reductions may not converge as expected.  It should be more stable if you host your own network with just your agents participating. In that case there won't be ephemeral nodes and so the topology is static.  The easiest thing may be to sketch out the project just using send/recv, and if you get an implementation that works reliably and want to add in x402 or some other middleware, then package the software behind an MCP server.  But thats just a suggestion 
+
+N I K H I L — 23/04/2026, 23:15Thursday, 23 April 2026 at 23:15
+Awesome, i will look into running my own network over the public nodes, and also can i get your opinion on the idea as a whole and if there is any feedback you would give for the idea? And is this idea and its usage of AXL something that the gensyn team wants and alligns with?
+Your feedback is very valuable, thank you johnny!
+
+@johnnyd9720
+1) each process will need to use its own node-config.json and launch the executable.  This page: https://docs.gensyn.ai/tech/agent-exchange-layer/configuration, has an example of how to change the node-config for the second node running on the same machine 2) If you are using just two nodes and no a-priori that you want them to communicate, I would send directly from 1 to the other using send/recv and the peerId of the recipient.  It should print to screen when you start the node.  https://docs.gensyn.ai/tech/agent-exchange-layer/examples-and-building#pattern-1-send-recv-fire-and-forget
+
+Lucifer — 23/04/2026, 23:42Thursday, 23 April 2026 at 23:42
+Hey thanks for answering my questions, could I also get feedback on my idea please, thanks!
+24 April 2026
+
+@johnnyd9720
+per DMs, the ETHGlobal recommendation is to keep the chat in the discord channel.  you can send your idea over if you like, but the best way to guarentee a discussion is to attend the office hours which we are in the process of scheduling
+
+Suganthan [FHE], FHE — 24/04/2026, 00:19Friday, 24 April 2026 at 00:19
+Hey @johnnyd9720 , this is my idea. Could you take a look and share your thoughts? Are there any improvements needed, and am I on the right track ?
+
+GenGuard is a decentralized agent firewall for AI agents built around Gensyn AXL as the core coordination network, with 0G providing verifiable storage and compute.
+
+ It addresses real-world failures like the Meta AI Agent Data Exposure, where an agent acted beyond its scope and exposed sensitive data due to lack of validation. More broadly, industry reports show autonomous agents are involved in a growing share of AI breaches, while visibility into their actions remains limited. 
+
+When an agent attempts a sensitive action, it creates an intent payload and broadcasts it over the AXL peer-to-peer mesh using A2A messaging. Independent guardian agents on separate AXL nodes receive the intent, evaluate it, and return approve/block decisions. 
+
+All coordination, communication, and consensus happen fully peer-to-peer within AXL, with no central server. Unlike centralized safety tools—which introduce single points of failure, control, and misconfiguration—GenGuard enforces validation through distributed consensus. 
+
+Policies are fetched from 0G KV Store, reasoning runs via 0G Compute (TEE-backed), and all decisions are stored on 0G Storage with hashes anchored on 0G Chain for immutable auditability. 
+
+The result is a trustless governance layer where AI agents cannot perform sensitive actions without decentralized peer validation.
+
+1
+Add Reaction
+
+johnnyd9720 — 24/04/2026, 00:45Friday, 24 April 2026 at 00:45
+all of these ideas sound great! We want to encourage everyone to work on what most interests them.  Your original creative ideas are great to see
+
+1
+Add Reaction
+
+N I K H I L — 24/04/2026, 00:48Friday, 24 April 2026 at 00:48
+@johnnyd9720 Thanks Johnny, this is really helpful. Two things you saved me from learning the hard way.
+
+Confirming the plan:
+
+I'll run my three agents as their own isolated network with static topology and no public peer connections, so Convergecast should converge cleanly.
+Starting with send/recv as the primary communication layer, then layering A2A on top once the base is stable. MCP wrapping comes after that.
+Will pull the latest AXL repo on April 24 to pick up your A2A v1.0 migration.Please let me know if there's anything specific I should watch out for in the new SDK.
+
+Will keep the updates coming.
+
+1
+Add Reaction
+
+HitmanWick — 24/04/2026, 03:05Friday, 24 April 2026 at 03:05
+Hey gensyn team when are the office hours
+[03:05]Friday, 24 April 2026 at 03:05
+Any schedule
+
+xfajarr [FNX], FNX — 24/04/2026, 03:19Friday, 24 April 2026 at 03:19
+hey
+
+johnnyd9720
+As an aside, a2a-sdk updated to v1.0 yesterday, so I am going to migrate the a2a integration over in the AXL repo today
+
+johnnyd9720 — 24/04/2026, 03:33Friday, 24 April 2026 at 03:33
+upgrade has been merged in, we are on the latest A2A. Thanks for the patience with that
+
+1
+Add Reaction
+
+@HitmanWick
+Hey gensyn team when are the office hours
+
+johnnyd9720 — 24/04/2026, 04:45Friday, 24 April 2026 at 04:45
+We will host office hours through this channel at the following times.
+Tuesday, 28 April at 12pm EST,
+Friday 1 May at 12pm EST,
+We will post further details closer to the events
+
+3
+Add Reaction
+
+@Suganthan
+ [FHE], FHE
+Hey @johnnyd9720 , this is my idea. Could you take a look and share your thoughts? Are there any improvements needed, and am I on the right track ?  GenGuard is a decentralized agent firewall for AI agents built around Gensyn AXL as the core coordination network, with 0G providing verifiable storage and compute.   It addresses real-world failures like the Meta AI Agent Data Exposure, where an agent acted beyond its scope and exposed sensitive data due to lack of validation. More broadly, industry reports show autonomous agents are involved in a growing share of AI breaches, while visibility into their actions remains limited.   When an agent attempts a sensitive action, it creates an intent payload and broadcasts it over the AXL peer-to-peer mesh using A2A messaging. Independent guardian agents on separate AXL nodes receive the intent, evaluate it, and return approve/block decisions.   All coordination, communication, and consensus happen fully peer-to-peer within AXL, with no central server. Unlike centralized safety tools—which introduce single points of failure, control, and misconfiguration—GenGuard enforces validation through distributed consensus.   Policies are fetched from 0G KV Store, reasoning runs via 0G Compute (TEE-backed), and all decisions are stored on 0G Storage with hashes anchored on 0G Chain for immutable auditability.   The result is a trustless governance layer where AI agents cannot perform sensitive actions without decentralized peer validation.
+
+penthouse_bagels — 24/04/2026, 06:17Friday, 24 April 2026 at 06:17
+Love these project ideas @Suganthan @N I K H I L @Lucifer
+
+1
+Add Reaction
+
+@penthouse_bagels
+Love these project ideas @Suganthan @N I K H I L @Lucifer
+
+N I K H I L — 24/04/2026, 14:16Friday, 24 April 2026 at 14:16
+awesome man, tysm
+
+HitmanWick — 24/04/2026, 14:55Friday, 24 April 2026 at 14:55
+@penthouse_bagels @johnnyd9720 few technical questions 
+
+1) Since you mentioned Convergecast may not converge reliably on the public mesh due to topology rebalancing, what's the recommended pattern for a static private network? Specifically: how many peers is Convergecast reliable at, does it handle one or two peers going offline mid-aggregation gracefully, and is there a reference implementation beyond the python-client one I should study? If Convergecast turns out to be unreliable even on a private network, what's the closest-equivalent pattern you'd recommend — manual aggregation via direct send/recv to a designated collector peer?
+
+2) What's the current production-readiness of Gensyn REE and Verde for hackathon use? If I wanted to run untrusted reproducer code across multiple peers and have each produce a bitwise-identical, cryptographically verifiable attestation of the output, is that possible today, or is it a v2 roadmap item? What's the current API surface and SDK availability, and what languages/runtimes does REE support?
+
+3) What's the recommended way to interface on-chain settlement with AXL-native events? If a signed message on the mesh needs to trigger a USDC (or other token) settlement with attribution to multiple peer pubkeys, is there a reference integration — with Delphi, with an EVM L2, or with x402? Does Delphi provide primitives for multi-party attribution settlement, or should I treat AXL and the settlement layer as fully separate and bridge them myself?
+
+4) For VRF-based peer selection from /topology, is there a canonical pattern you recommend? I want to randomly draw N peers from the current peer set for a one-time committee, with the draw being verifiable after the fact by any observer. Would you use drand, an on-chain VRF, a commit-reveal among peers, or something AXL-native I'm missing? And does /topology return stable peerIds across the selection window, or can peers rotate in and out mid-committee?
+[14:55]Friday, 24 April 2026 at 14:55
+would love to get more of gensyn tech working with axl
+[14:56]Friday, 24 April 2026 at 14:56
+i have a very exciting cybersecurity agent swarm idea
+
+@penthouse_bagels
+Love these project ideas @Suganthan @N I K H I L @Lucifer
+
+Lucifer — 24/04/2026, 16:22Friday, 24 April 2026 at 16:22
+Thanks brother, means a lot
+
+@HitmanWick
+@penthouse_bagels @johnnyd9720 few technical questions   1) Since you mentioned Convergecast may not converge reliably on the public mesh due to topology rebalancing, what's the recommended pattern for a static private network? Specifically: how many peers is Convergecast reliable at, does it handle one or two peers going offline mid-aggregation gracefully, and is there a reference implementation beyond the python-client one I should study? If Convergecast turns out to be unreliable even on a private network, what's the closest-equivalent pattern you'd recommend — manual aggregation via direct send/recv to a designated collector peer?  2) What's the current production-readiness of Gensyn REE and Verde for hackathon use? If I wanted to run untrusted reproducer code across multiple peers and have each produce a bitwise-identical, cryptographically verifiable attestation of the output, is that possible today, or is it a v2 roadmap item? What's the current API surface and SDK availability, and what languages/runtimes does REE support?  3) What's the recommended way to interface on-chain settlement with AXL-native events? If a signed message on the mesh needs to trigger a USDC (or other token) settlement with attribution to multiple peer pubkeys, is there a reference integration — with Delphi, with an EVM L2, or with x402? Does Delphi provide primitives for multi-party attribution settlement, or should I treat AXL and the settlement layer as fully separate and bridge them myself?  4) For VRF-based peer selection from /topology, is there a canonical pattern you recommend? I want to randomly draw N peers from the current peer set for a one-time committee, with the draw being verifiable after the fact by any observer. Would you use drand, an on-chain VRF, a commit-reveal among peers, or something AXL-native I'm missing? And does /topology return stable peerIds across the selection window, or can peers rotate in and out mid-committee?
+
+johnnyd9720 — 24/04/2026, 20:46Friday, 24 April 2026 at 20:46
+1) covnergecast is one way to perform a gather.  In the /topology endpoint you have access to the network topology, so if you need to use ephemeral nodes you can orchestrate direct send/recv to the nodes that are static.  It kind of depends on the use case, and of course there are always a few options.  From the sound of things, you are running a few agents, but they can be reliably online if you choose to keep the node up.  If you want to setup a private network with 4 agents for example, you can run the node on each agent, the tree will be static so the convergecast will work.  If agents shutdown their node between communications then it will only work if they are all online and all participate in the convergcast.  If you need something more failure tolerant I would suggest directly orchestrating the comms.
+
+2) ree is open and ready for use, https://github.com/gensyn-ai/ree.
+
+3). The two layers are fully separate. They are meant to be modular tooling that can be incorporated together at the app level.  You can def bridge the two!
+
+4) I don't have the answer for this right now, let me check with the smart contract engineers about VRF.  For the purpose of the hackathon its fine to use un-verified random draws from /topology.  peers can rotate in or out.   EDIT: VRF is a chainlink product and we don't support that on our chain currently.
+
+Just a note on peers on the network: the network is a low level network, there will be other peers that aren't running your applictions that will appear in topology.  If you want to restrict your agents world to other participating agents, it would be best to start your own network. that way everyone you find in topology will be participating agents.  Then later you can always extend the app to the full open network and add robustness (edited)Friday, 24 April 2026 at 21:49
+
+1
+Add Reaction
+
+@penthouse_bagels
+Love these project ideas @Suganthan @N I K H I L @Lucifer
+
+Suganthan [FHE], FHE — 24/04/2026, 23:03Friday, 24 April 2026 at 23:03
+Thanks, glad you liked the ideas !
+
+@johnnyd9720
+1) covnergecast is one way to perform a gather.  In the /topology endpoint you have access to the network topology, so if you need to use ephemeral nodes you can orchestrate direct send/recv to the nodes that are static.  It kind of depends on the use case, and of course there are always a few options.  From the sound of things, you are running a few agents, but they can be reliably online if you choose to keep the node up.  If you want to setup a private network with 4 agents for example, you can run the node on each agent, the tree will be static so the convergecast will work.  If agents shutdown their node between communications then it will only work if they are all online and all participate in the convergcast.  If you need something more failure tolerant I would suggest directly orchestrating the comms.    2) ree is open and ready for use, https://github.com/gensyn-ai/ree.    3). The two layers are fully separate. They are meant to be modular tooling that can be incorporated together at the app level.  You can def bridge the two!  4) I don't have the answer for this right now, let me check with the smart contract engineers about VRF.  For the purpose of the hackathon its fine to use un-verified random draws from /topology.  peers can rotate in or out.   EDIT: VRF is a chainlink product and we don't support that on our chain currently.    Just a note on peers on the network: the network is a low level network, there will be other peers that aren't running your applictions that will appear in topology.  If you want to restrict your agents world to other participating agents, it would be best to start your own network. that way everyone you find in topology will be participating agents.  Then later you can always extend the app to the full open network and add robustness (edited)Friday, 24 April 2026 at 21:49
+
+Hitakshi — 24/04/2026, 23:13Friday, 24 April 2026 at 23:13
+For an MCP server I'd write to expose AXL endpoints to my agents (so my Claude Agent SDK-based  agents can call  something like axl_send, axl_recv, axl_topology, axl_mcp_call as MCP tools), is there a reference implementation already, or am I writing this from scratch? If from scratch, what's the recommended pattern — wrap the localhost HTTP API directly, or use a higher-level client library you ship?,
+
+I want to write a smart contract that holds bounty escrow from a registrar, accepts attestations from N peer pubkeys, and dispatches token reward to multiple recipients based on an aggregated decision. For the hackathon:,
+(a) What's the testnet RPC endpoint and faucet flow? How do I get test funds?
+(b) Does Gensyn Chain support standard EVM Solidity contracts deployed via Hardhat or Foundry?
+(c) Are there any existing on-chain primitives (registry contracts, payment splitters, attestation verifiers) that I can compose with rather than write from scratch? (edited)Friday, 24 April 2026 at 23:14
+
+@Hitakshi
+For an MCP server I'd write to expose AXL endpoints to my agents (so my Claude Agent SDK-based  agents can call  something like axl_send, axl_recv, axl_topology, axl_mcp_call as MCP tools), is there a reference implementation already, or am I writing this from scratch? If from scratch, what's the recommended pattern — wrap the localhost HTTP API directly, or use a higher-level client library you ship?, I want to write a smart contract that holds bounty escrow from a registrar, accepts attestations from N peer pubkeys, and dispatches token reward to multiple recipients based on an aggregated decision. For the hackathon:,(a) What's the testnet RPC endpoint and faucet flow? How do I get test funds? (b) Does Gensyn Chain support standard EVM Solidity contracts deployed via Hardhat or Foundry? (c) Are there any existing on-chain primitives (registry contracts, payment splitters, attestation verifiers) that I can compose with rather than write from scratch? (edited)Friday, 24 April 2026 at 23:14
+
+johnnyd9720 — 24/04/2026, 23:25Friday, 24 April 2026 at 23:25
+we released a demo called collaborative auto research, where you claude agent can send/recv with other agents working on a task: https://github.com/gensyn-ai/collaborative-autoresearch-demo/tree/main/skills/autoresearch-network.  There we expose the AXL endpoints to the agent through a CLI and a SKILL that the agent can call.  That may be a good reference for you, or you can use that skill directly,
+
+I think all the testnet info you need can be found on this page: https://docs.gensyn.network/network-information.  If you need more detailed chain information, I'll have to get that info from a SC engineer ,
+
+2
+Add Reaction
+
+Hitakshi — 24/04/2026, 23:33Friday, 24 April 2026 at 23:33
+I'm building a permissionless swarm where agents produce outputs and a panel of verifier agents attests to resolution. Structurally it feels like an information market with panel-attestation resolution instead of binary outcomes. Can Delphi support this shape, or should I write a parallel Solidity contract imitating its mechanics
+
+@johnnyd9720
+we released a demo called collaborative auto research, where you claude agent can send/recv with other agents working on a task: https://github.com/gensyn-ai/collaborative-autoresearch-demo/tree/main/skills/autoresearch-network.  There we expose the AXL endpoints to the agent through a CLI and a SKILL that the agent can call.  That may be a good reference for you, or you can use that skill directly, I think all the testnet info you need can be found on this page: https://docs.gensyn.network/network-information.  If you need more detailed chain information, I'll have to get that info from a SC engineer ,
+
+Hitakshi — 24/04/2026, 23:36Friday, 24 April 2026 at 23:36
+Could you ask for these if they exist for the testnet - 
+Testnet faucet URL/flow
+Any existing on-chain primitives i could use (payment splitters, attestation verifiers, registry contracts)
+Whether USDC exists on testnet (can i bridge it from somewhere or should i just make up something)
+25 April 2026
+
+AgnelI'm new here, say hi! — 25/04/2026, 00:56Saturday, 25 April 2026 at 00:56
+Hey @johnnyd9720 — sharing my hackathon idea for your review. Are there any improvements needed?
+
+Project: Huddle — Intent-Matched Bulk Purchase Coalitions
+
+The Pain:
+DeFi solved coordination for capital — AMMs let strangers pool liquidity without trusting each other. Nobody solved it for purchasing power. You and 47 strangers wanted the same OLED TV this month — each paid retail, each overpaid ~15%. The only reason the bulk discount doesn't exist in B2C is coordination cost. Any central broker aggregating purchase intent becomes a front-running machine — selling intent to the retailer or taking a rake. Same order-flow problem Flashbots solved in DeFi. Nobody solved it for consumer purchasing.
+
+AXL fixes this at infrastructure level. Buyer agents broadcast hashed intents — H(product_id  max_price 
+Spoiler
+ deadline || nonce) — over AXL's encrypted P2P mesh. No node sees cleartext. When ≥10 matching hashes are detected, agents reveal intents only to each other over direct A2A channels. Coordination happens — front-running surface doesn't. Only possible because AXL's two-layer encryption makes every routing node cryptographically blind.
+
+The Product:
+User says "65" LG OLED, $1,800, wait 5 days." Three days later: "14 buyers found, negotiated $1,520 with Best Buy. Accept?" One tap. No wallets, no crypto visible.
+
+Questions:
+
+Commit-reveal over A2A for k-anonymity intent clustering — right pattern, or cleaner AXL-native approach?
+
+Coordinator election — off-chain signed role token sufficient for hackathon scope, or needs to be onchain?
+
+Any blind spots before I start building?
+
+@Hitakshi
+Could you ask for these if they exist for the testnet -  Testnet faucet URL/flow Any existing on-chain primitives i could use (payment splitters, attestation verifiers, registry contracts) Whether USDC exists on testnet (can i bridge it from somewhere or should i just make up something)
+
+penthouse_bagels — 25/04/2026, 01:02Saturday, 25 April 2026 at 01:02
+Heya -- you can find network information re: Testnet on our Protocol docs: https://docs.gensyn.network/network-information
+
+1
+Add Reaction
+
+@Agnel
+Hey @johnnyd9720 — sharing my hackathon idea for your review. Are there any improvements needed?  Project: Huddle — Intent-Matched Bulk Purchase Coalitions  The Pain: DeFi solved coordination for capital — AMMs let strangers pool liquidity without trusting each other. Nobody solved it for purchasing power. You and 47 strangers wanted the same OLED TV this month — each paid retail, each overpaid ~15%. The only reason the bulk discount doesn't exist in B2C is coordination cost. Any central broker aggregating purchase intent becomes a front-running machine — selling intent to the retailer or taking a rake. Same order-flow problem Flashbots solved in DeFi. Nobody solved it for consumer purchasing.  AXL fixes this at infrastructure level. Buyer agents broadcast hashed intents — H(product_id  max_price 
+Spoiler
+ deadline || nonce) — over AXL's encrypted P2P mesh. No node sees cleartext. When ≥10 matching hashes are detected, agents reveal intents only to each other over direct A2A channels. Coordination happens — front-running surface doesn't. Only possible because AXL's two-layer encryption makes every routing node cryptographically blind.  The Product: User says "65" LG OLED, $1,800, wait 5 days." Three days later: "14 buyers found, negotiated $1,520 with Best Buy. Accept?" One tap. No wallets, no crypto visible.  Questions:  Commit-reveal over A2A for k-anonymity intent clustering — right pattern, or cleaner AXL-native approach?  Coordinator election — off-chain signed role token sufficient for hackathon scope, or needs to be onchain?  Any blind spots before I start building?
+
+penthouse_bagels — 25/04/2026, 01:24Saturday, 25 April 2026 at 01:24
+This is a really cool idea but I do have some questions:
+where are the sellers in the picture here: does best buy (or whoever) need some form of platform integration with an API or front end?,
+fulfillment and logistics -- would bulk suppliers be interested in shipping a bulk supply's worth of product to different addresses?,
+
+There might be few biz ops things to figure out. It may be worth exploring the same idea/concept but within the realm of digital product / licenses / shared compute or credits (basically anything digitial) if there are platforms that would allow for that would my advice
+
+@penthouse_bagels
+Heya -- you can find network information re: Testnet on our Protocol docs: https://docs.gensyn.network/network-information
+
+Hitakshi — 25/04/2026, 01:26Saturday, 25 April 2026 at 01:26
+hey yes i asked the question after referring to the docs but testnet info is basically here is the Chain ID and bridges , no faucet for any tokens , ig that would be fine i can make my own tokens for now
+
+1
+Add Reaction
+
+Hitakshi
+I'm building a permissionless swarm where agents produce outputs and a panel of verifier agents attests to resolution. Structurally it feels like an information market with panel-attestation resolution instead of binary outcomes. Can Delphi support this shape, or should I write a parallel Solidity contract imitating its mechanics
+
+Hitakshi — 25/04/2026, 01:28Saturday, 25 April 2026 at 01:28
+and also yes im still interested in making this an delphi like information market ig original contracts would not support my vision but instead of building from scratch i could use the delphi contract source if its available somewhere
+
+Hitakshi — 25/04/2026, 02:29Saturday, 25 April 2026 at 02:29
+got the smart contracts ! https://github.com/gensyn-ai/delphi-smart-contracts
+
+1
+Add Reaction
+
+B1smuth — 25/04/2026, 05:02Saturday, 25 April 2026 at 05:02
+Is there a way to hot reload peers ? I want to make a dashboard so that I can add anyone's peer id to my config without the need of restarting the application.
+
+N I K H I L — 25/04/2026, 14:28Saturday, 25 April 2026 at 14:28
+@johnnyd9720 hey can i know when would office hours be conducted?
+
+@johnnyd9720
+We will host office hours through this channel at the following times. Tuesday, 28 April at 12pm EST,Friday 1 May at 12pm EST,We will post further details closer to the events
+
+HitmanWick — 25/04/2026, 15:27Saturday, 25 April 2026 at 15:27
+@N I K H I L (edited)Saturday, 25 April 2026 at 15:27
+
+1
+Add Reaction
+
+@penthouse_bagels
+This is a really cool idea but I do have some questions: where are the sellers in the picture here: does best buy (or whoever) need some form of platform integration with an API or front end?,fulfillment and logistics -- would bulk suppliers be interested in shipping a bulk supply's worth of product to different addresses?, There might be few biz ops things to figure out. It may be worth exploring the same idea/concept but within the realm of digital product / licenses / shared compute or credits (basically anything digitial) if there are platforms that would allow for that would my advice
+
+AgnelI'm new here, say hi! — 25/04/2026, 15:45Saturday, 25 April 2026 at 15:45
+Thanks for the questions @penthouse_bagels
+Yeah, fair points. The “self-hosted seller agent” was a demo workaround, not a real solution—and physical goods break down anyway (pallet → 14 homes kills the discount).
+
+After digging more, the key insight is: we don’t need to create discounts. They already exist for digital goods—just locked behind volume tiers individuals can’t reach (AWS, Twilio, Figma, GPU clouds, etc.).
+
+So the protocol becomes:
+
+pool small buyers → cross threshold → unlock existing tier
+allocate each buyer their share via capability tokens / sub-accounts
+
+No shipping, no retailer buy-in—just API-based sellers.
+
+For the demo:
+
+seller = controlled reference implementation (thin layer)
+real focus = buyer-side protocol + token issuance
+future sellers can plug in behind this
+
+One thing I wanted your take on:
+does Gensyn have a testnet compute endpoint we could hook into for redemption? Even basic capability tokens unlocking real compute would make the demo feel legit vs. fully mocked.
+
+Sources:
+
+https://www.twilio.com/en-us/pricing
+https://www.freqens.com/blog/figma-enterprise-subscription-costs-guide
+https://vast.ai/pricing
+https://www.spheron.network/blog/gpu-cloud-pricing-comparison-2026/
+Twilio
+Twilio Pricing | Twilio
+Simple and flexible pricing options. Start building today with free trial credit and full API access.
+
+Figma Enterprise Subscription Costs Guide
+Figma Enterprise pricing explained: compare tiers, uncover hidden costs, and learn proven tactics to negotiate better deals without common contract pitfalls.
+
+Vast AI
+GPU Pricing — Live Platform Rates | Vast.ai
+Live GPU pricing on Vast.ai. Prices set by supply and demand across 40+ data centers. On-demand, interruptible, or reserved — find the right GPU at the right price.
+Spheron
+GPU Cloud Pricing Comparison 2026: Every Major Provider Side by Sid...
+H100, H200, B200, B300, A100, L40S, and RTX 4090 pricing across 15+ providers. On-demand, spot, reserved tiers, hidden costs, and price-performance ratios, updated April 2026.
+
+
+B1smuth
+Is there a way to hot reload peers ? I want to make a dashboard so that I can add anyone's peer id to my config without the need of restarting the application.
+
+B1smuth — 25/04/2026, 19:41Saturday, 25 April 2026 at 19:41
+Can I get an answer in this ?
+26 April 2026
+
+@B1smuth
+Can I get an answer in this ?
+
+johnnyd9720 — 26/04/2026, 01:11Sunday, 26 April 2026 at 01:11
+Can you give more details? Hot reload which peers? Are you on a blockchain or a P2P network?
+
+@johnnyd9720
+Can you give more details? Hot reload which peers? Are you on a blockchain or a P2P network?
+
+B1smuth — 26/04/2026, 01:28Sunday, 26 April 2026 at 01:28
+The one I am supposed to add in node-config.json
+
+johnnyd9720 — 26/04/2026, 01:55Sunday, 26 April 2026 at 01:55
+You can use the defaults there or host your own public node to bootstrap your own network. You don’t need many to maintain the connection and once connected you can setup comms with anyone, not just the public peers
+
+Harshit — 26/04/2026, 02:05Sunday, 26 April 2026 at 02:05
+hey @johnnyd9720 wanted to quickly run my idea through the team once. I was thinking about building P2P Verifiable Inference Mesh.
+Each node runs a local LLM and exposes it as an MCP service over AXL. A coordinator reads /topology, discovers available inference peers, routes requests via /mcp/{peer_id}/infer, and each peer runs the inference through REE producing a cryptographic receipt. The caller gets the answer and a verifiable proof it wasn't tampered with.
+
+AXL usage: Deep MCP service registration, topology-driven routing, /mcp/{peer_id}/service calls across the mesh.
+REE usage: Each inference node wraps its output in a REE receipt. Receipts are relayed back over /send//recv
+
+lemme know what you think
+
+1
+Add Reaction
+
+Hitakshi — 26/04/2026, 02:18Sunday, 26 April 2026 at 02:18
+ree is for ml models and that too select models (edited)Sunday, 26 April 2026 at 02:24
+
+@Harshit
+hey @johnnyd9720 wanted to quickly run my idea through the team once. I was thinking about building P2P Verifiable Inference Mesh. Each node runs a local LLM and exposes it as an MCP service over AXL. A coordinator reads /topology, discovers available inference peers, routes requests via /mcp/{peer_id}/infer, and each peer runs the inference through REE producing a cryptographic receipt. The caller gets the answer and a verifiable proof it wasn't tampered with.  AXL usage: Deep MCP service registration, topology-driven routing, /mcp/{peer_id}/service calls across the mesh. REE usage: Each inference node wraps its output in a REE receipt. Receipts are relayed back over /send//recv  lemme know what you think
+
+johnnyd9720 — 26/04/2026, 02:27Sunday, 26 April 2026 at 02:27
+That sounds really cool! I think all the pieces should be there to build this. Let us know if you run into any blockers
+
+1
+Add Reaction
+
+abena.ethPlus Member — 26/04/2026, 03:42Sunday, 26 April 2026 at 03:42
+@johnnyd9720 Hi Johnny, my team and I would like to have feedback about what we plann in building. How should we best approach? DM?
+
+garosan — 26/04/2026, 04:01Sunday, 26 April 2026 at 04:01
+Hi is there a video guide for your track? I haven't found anything under "gensyn" in Youtube
+
+@johnnyd9720
+You can use the defaults there or host your own public node to bootstrap your own network. You don’t need many to maintain the connection and once connected you can setup comms with anyone, not just the public peers
+
+B1smuth — 26/04/2026, 04:22Sunday, 26 April 2026 at 04:22
+but peers can only connect if we have exchanged peer ids as per the documentation. So how do I add someone's peer id to my config without restarting
+
+garosan
+Hi is there a video guide for your track? I haven't found anything under "gensyn" in Youtube
+
+garosan — 26/04/2026, 05:00Sunday, 26 April 2026 at 05:00
+Lol found it
+
+1
+Add Reaction
+
+@abena.eth
+@johnnyd9720 Hi Johnny, my team and I would like to have feedback about what we plann in building. How should we best approach? DM?
+
+johnnyd9720 — 26/04/2026, 06:25Sunday, 26 April 2026 at 06:25
+We have office hours coming up. If you don’t feel comfortable sharing here, then that is the best place to discuss
+
+@B1smuth
+but peers can only connect if we have exchanged peer ids as per the documentation. So how do I add someone's peer id to my config without restarting
+
+johnnyd9720 — 26/04/2026, 06:27Sunday, 26 April 2026 at 06:27
+You don’t need to have a peer in your config to connect with them. You can check the topology endpoint for discovery.  The peer in the config is only the public peer used for routing
+
+1
+Add Reaction
+
+Falco90ETHGlobal-Finalists-Community — 26/04/2026, 10:53Sunday, 26 April 2026 at 10:53
+I'm trying to follow along with the getting started guide, trying to get two nodes on separate terminals talking to each other using both node-config files from the guide. I've also tried changing the configs, adding both nodes to each other as peers etc. Nodes appear to be running fine, the topology endpoints show their IPv6 addresses and public keys, but I keep coming back to the same error after I run the "hello from node B" curl command. Failed to reach peer: failed to reach peer: connect tcp [203:9917:7d94:48b0:2a10:532f:e410:b94b]:7101: operation timed out.
+
+Am I missing something obvious here?  (edited)Sunday, 26 April 2026 at 10:53
+
+@johnnyd9720
+We have office hours coming up. If you don’t feel comfortable sharing here, then that is the best place to discuss
+
+abena.ethPlus Member — 26/04/2026, 19:51Sunday, 26 April 2026 at 19:51
+When is the office hours happening?
+
+@Falco90
+I'm trying to follow along with the getting started guide, trying to get two nodes on separate terminals talking to each other using both node-config files from the guide. I've also tried changing the configs, adding both nodes to each other as peers etc. Nodes appear to be running fine, the topology endpoints show their IPv6 addresses and public keys, but I keep coming back to the same error after I run the "hello from node B" curl command. Failed to reach peer: failed to reach peer: connect tcp [203:9917:7d94:48b0:2a10:532f:e410:b94b]:7101: operation timed out.  Am I missing something obvious here?  (edited)Sunday, 26 April 2026 at 10:53
+
+johnnyd9720 — 26/04/2026, 19:55Sunday, 26 April 2026 at 19:55
+I'm not sure actually  , I just tried it on my macbook and was able to recv the message from node B.    Just to verify, you are using two different private keys and you are using two different config files? Did you remove the peers from each so they don't join another network?
+
+@abena.eth
+When is the office hours happening?
+
+johnnyd9720 — 26/04/2026, 19:56Sunday, 26 April 2026 at 19:56
+Tuesday at 12pm EST
+
+@johnnyd9720
+Tuesday at 12pm EST
+
+abena.ethPlus Member — 26/04/2026, 20:08Sunday, 26 April 2026 at 20:08
+Thanks for letting me know. I will ask in this channel.
+
+@johnnyd9720
+I'm not sure actually  , I just tried it on my macbook and was able to recv the message from node B.    Just to verify, you are using two different private keys and you are using two different config files? Did you remove the peers from each so they don't join another network?
+
+Falco90ETHGlobal-Finalists-Community — 26/04/2026, 20:36Sunday, 26 April 2026 at 20:36
+Thanks for your reply! Yes 2 private keys in their own .pem files, 2 node config files both without anything in Peers[] or Listen[]. One running at 127.0.0.1:9002 and one at 127.0.0.1:9012, showing their IPv6 address and public keys, just like in the docs. If I can't figure it out by Tuesday, I'll ask you in the office hours if that's possible (edited)Sunday, 26 April 2026 at 20:36
+
+1
+Add Reaction
+
+@johnnyd9720
+That sounds really cool! I think all the pieces should be there to build this. Let us know if you run into any blockers
+
+Harshit — 26/04/2026, 23:35Sunday, 26 April 2026 at 23:35
+hi @johnnyd9720 , how can I get delphi api key? i wanted to extend my project on it and needed the api key to list the markets
+
+Harshit
+hi @johnnyd9720 , how can I get delphi api key? i wanted to extend my project on it and needed the api key to list the markets
+
+Harshit — 26/04/2026, 23:49Sunday, 26 April 2026 at 23:49
+nvm, I got the API key. Can I get some testnet USDC on this wallet addr 0x8a453B41c6E454D5b3152f32908Bc9A0DDa689B4
+or if there is a faucet available, can you please link it
+27 April 2026
+
+@Harshit
+nvm, I got the API key. Can I get some testnet USDC on this wallet addr 0x8a453B41c6E454D5b3152f32908Bc9A0DDa689B4 or if there is a faucet available, can you please link it
+
+johnnyd9720 — 27/04/2026, 00:22Monday, 27 April 2026 at 00:22
+here is the testnet faucet: https://www.alchemy.com/faucets/gensyn-testnet
+Alchemy
+Faucet - Gensyn Testnet | Alchemy
+Claim testnet tokens for Gensyn Testnet faucet.
+
+1
+Add Reaction
+
+@Falco90
+Thanks for your reply! Yes 2 private keys in their own .pem files, 2 node config files both without anything in Peers[] or Listen[]. One running at 127.0.0.1:9002 and one at 127.0.0.1:9012, showing their IPv6 address and public keys, just like in the docs. If I can't figure it out by Tuesday, I'll ask you in the office hours if that's possible (edited)Sunday, 26 April 2026 at 20:36
+
+Vitalik | Bitcoin.com [WISE], WISEPlus Member — 27/04/2026, 00:36Monday, 27 April 2026 at 00:36
+got a running example locally working according to docs, next step with 2 separate apps/devices (single node on 9002), but happy to share initial setup if you still need it.
+
+
+Thread
+got a running example locally working
+3 Messages ›
+
+Falco90
+I got it working, thanks alot!
+3d ago
+
+@Harshit
+nvm, I got the API key. Can I get some testnet USDC on this wallet addr 0x8a453B41c6E454D5b3152f32908Bc9A0DDa689B4 or if there is a faucet available, can you please link it
+
+Vitalik | Bitcoin.com [WISE], WISEPlus Member — 27/04/2026, 00:37Monday, 27 April 2026 at 00:37
+I've sent you some MockTokens (MT) https://gensyn-testnet.explorer.alchemy.com/tx/0x08dd5d5506c5aa1cc0ca8000c3acfc321ad468f8dc783a08cf31d5901071889b
+
+It's mentioned here: https://docs.gensyn.ai/tech/agentic-trading/creating-and-funding-wallets#testnet
+in case you need more.
+
+Gensyn Testnet transaction 0x08dd5d5506c5aa1cc0ca8000c3acfc321ad468...
+
+1
+Add Reaction
+
+@johnnyd9720
+Tuesday at 12pm EST
+
+abena.ethPlus Member — 27/04/2026, 01:52Monday, 27 April 2026 at 01:52
+We are building CounterAgent at ETHGlobal, autonomous 5-agent system for merchant treasury management on Base. Watches stablecoin payments, scores FX rates, auto-converts via Uniswap when it's worth it, audit log on 0G, Telegram alert to merchant. No backend.
+Our Decision Agent runs a hold/convert scoring model and we think that's where Gensyn fits, instead of a rule-based model, we train and serve the weights via Gensyn so the inference is decentralised and verifiable. Feels like the right direction for a trustless agent stack.
+Does that integration resonate with your team? Would love a quick yes/no before office hours so we know whether to build it in 
+
+2
+
+1
+Add Reaction
+Falco90
+ started a thread: got a running example locally working. See all threads. — 27/04/2026, 08:31Monday, 27 April 2026 at 08:31
+
+X_ — 27/04/2026, 17:38Monday, 27 April 2026 at 17:38
+Hello all!   Gensyn Open Agents Office Hours are coming up! 
+
+Two sessions are scheduled this week. Bring your questions, ideas, thoughts and join at the zoom links below!
+
+Tuesday 28th April 12pm ET 29 April 2026 at 00:00 (local time):,
+https://zoom.us/j/96284472122?pwd=4iW3BONrznhmcXUnECCzSeqA2juEXB.1
+
+Friday 1 May 12pm ET 2 May 2026 at 00:00 (local time),
+https://zoom.us/j/99792479007?pwd=0fBaJbvnRH68PpILh8aQEUdSYjd0rl.1
+
+5
+
+2
+Add Reaction
+Pascal | ETHGlobal
+Pascal | ETHGlobal
+ pinned a message to this channel. See all pinned messages. — 27/04/2026, 19:13Monday, 27 April 2026 at 19:13
+
+zaheer [0G], 0G — 27/04/2026, 21:17Monday, 27 April 2026 at 21:17
+I’m building AXL agent town, a decentralized multi agent simulation built on top of the gensyn AXL. The system is designed so that every agent is a sovereign entity with its own dedicated infrastructure. 
+Is this a good idea?
+
+1
+Add Reaction
+
+@Vitalik | Bitcoin.com
+ [WISE], WISE
+got a running example locally working according to docs, next step with 2 separate apps/devices (single node on 9002), but happy to share initial setup if you still need it.
+
+penthouse_bagels — 27/04/2026, 22:27Monday, 27 April 2026 at 22:27
+Really glad these resources were helpful for you! 
+
+1
+Add Reaction
+28 April 2026
+
+@Vitalik | Bitcoin.com
+ [WISE], WISE
+I've sent you some MockTokens (MT) https://gensyn-testnet.explorer.alchemy.com/tx/0x08dd5d5506c5aa1cc0ca8000c3acfc321ad468f8dc783a08cf31d5901071889b  It's mentioned here: https://docs.gensyn.ai/tech/agentic-trading/creating-and-funding-wallets#testnet in case you need more.
+
+Harshit — 28/04/2026, 00:23Tuesday, 28 April 2026 at 00:23
+thank you.
+
+1
+Add Reaction
+
+Prateush Sharma — 28/04/2026, 02:38Tuesday, 28 April 2026 at 02:38
+I wanna discuss my idea whome can I contact?
+
+N I K H I L — 28/04/2026, 10:36Tuesday, 28 April 2026 at 10:36
+Gm gm
+
+Trivo — 28/04/2026, 15:32Tuesday, 28 April 2026 at 15:32
+gm friends  As part of my project, I am working on a quick&dirty TS SDK for AXL and I just published two small TypeScript packages for working with Gensyn AXL:
+
+@0xagentio/axl-client - thin TS client for the AXL node HTTP bridge,
+@0xagentio/axl-local - local dev/test wrapper to spin up and manage the AXL node processes from TypeScript (I prefer programmable processes x)),
+
+This is still pretty basic but I thought maybe this can make someone elses life a little easier :) 
+
+ Note: this does not reimplement AXL, you still need the real Gensyn AXL node binary and provide it to the SDK 
+
+Install:
+
+  
+npm install @0xagentio/axl-client @0xagentio/axl-local
+
+# then build the AXL node
+
+git clone https://github.com/gensyn-ai/axl
+cd axl
+go build -o node ./cmd/node/
+
+
+Then use it from TS:
+
+
+import { startLocalAxlNetwork } from '@0xagentio/axl-local';
+
+const network = await startLocalAxlNetwork({
+  binaryPath: '/Users/trivo/Documents/GitHub/axl/node',
+  workingDirectory: '.axl',
+  nodes: [
+    { name: 'alice', apiPort: 9101, listen: ['tls://127.0.0.1:9201'] },
+    { name: 'bob', apiPort: 9102, peers: ['tls://127.0.0.1:9201'] },
+  ],
+});
+
+const alice = network.node('alice');
+const bob = network.node('bob');
+
+await alice.client.send({
+  peerId: bob.peerId,
+  body: new TextEncoder().encode('hello bob'),
+});
+
+const msg = await bob.client.recv();
+if (msg) {
+  console.log(new TextDecoder().decode(msg.body));
+} else {
+  console.log('no message received');
+}
+
+await network.stop();
+
+Useful if you want to test local P2P agent communication with AXL from TypeScript and maybe even spin up multiple ones  (edited)Tuesday, 28 April 2026 at 15:33
+
+1
+Add Reaction
+
+X_
+Hello all!   Gensyn Open Agents Office Hours are coming up!   Two sessions are scheduled this week. Bring your questions, ideas, thoughts and join at the zoom links below!  Tuesday 28th April 12pm ET 29 April 2026 at 00:00 (local time):,https://zoom.us/j/96284472122?pwd=4iW3BONrznhmcXUnECCzSeqA2juEXB.1  Friday 1 May 12pm ET 2 May 2026 at 00:00 (local time),https://zoom.us/j/99792479007?pwd=0fBaJbvnRH68PpILh8aQEUdSYjd0rl.1
+
+X_ — 28/04/2026, 18:59Tuesday, 28 April 2026 at 18:59
+A little reminder about the Office Hours later today   (Also in pinned messages)
+
+2
+Add Reaction
+29 April 2026
+
+X_ — 29/04/2026, 00:03Wednesday, 29 April 2026 at 00:03
+Hello all!   Gensyn Open Agents Office Hours are coming up! 
+
+Two sessions are scheduled this week. Bring your questions, ideas, thoughts and join at the zoom links below!
+
+Tuesday 28th April 12pm ET 29 April 2026 at 00:00 (local time):,
+https://zoom.us/j/96284472122?pwd=4iW3BONrznhmcXUnECCzSeqA2juEXB.1
+
+Friday 1 May 12pm ET 2 May 2026 at 00:00 (local time),
+https://zoom.us/j/99792479007?pwd=0fBaJbvnRH68PpILh8aQEUdSYjd0rl.1
+
+penthouse_bagels — 29/04/2026, 00:13Wednesday, 29 April 2026 at 00:13
+Here's what you can configure @abena.eth (and Julio) regarding the resource limits --> https://docs.gensyn.ai/tech/agent-exchange-layer/configuration#example-configurations
+
+1
+Add Reaction
+
+@penthouse_bagels
+Here's what you can configure @abena.eth (and Julio) regarding the resource limits --> https://docs.gensyn.ai/tech/agent-exchange-layer/configuration#example-configurations
+
+abena.ethPlus Member — 29/04/2026, 00:18Wednesday, 29 April 2026 at 00:18
+Thanks for sharing this
+
+1
+Add Reaction
+
+johnnyd9720 — 29/04/2026, 00:37Wednesday, 29 April 2026 at 00:37
+@X_ will send a new meeting link, sorry about that! (edited)Wednesday, 29 April 2026 at 00:37
+
+N I K H I L — 29/04/2026, 00:37Wednesday, 29 April 2026 at 00:37
+awesome
+
+X_ — 29/04/2026, 00:38Wednesday, 29 April 2026 at 00:38
+https://zoom.us/j/93653868047?pwd=de5lE197VwPTR37XFNw3h4oxdwLaNv.1
+Zoom
+Join our Cloud HD Video Meeting
+Zoom is the leader in modern enterprise cloud communications.
+
+[00:38]Wednesday, 29 April 2026 at 00:38
+Try this one
+
+johnnyd9720 — 29/04/2026, 00:38Wednesday, 29 April 2026 at 00:38
+that works for me
+
+Gabriel F — 29/04/2026, 05:42Wednesday, 29 April 2026 at 05:42
+Hey, I'm also building on axl - I'm thinking about building an AI village.
+I'm wondering what's the best way to allow every node to talk to every other node - like a megaphone kind of thing. This is necessary because I have a mayor node that should emit to all other nodes. Do you guys have examples/thoughts on this? Thanks
+
+MrNetwork🛡I'm new here, say hi! — 29/04/2026, 07:43Wednesday, 29 April 2026 at 07:43
+Happy to be here
+
+2
+Add Reaction
+
+@MrNetwork🛡
+Happy to be here
+
+penthouse_bagels — 29/04/2026, 08:19Wednesday, 29 April 2026 at 08:19
+I'm Judson on X btw -- hope to see you Friday!
+
+1
+Add Reaction
+
+@Gabriel F
+Hey, I'm also building on axl - I'm thinking about building an AI village. I'm wondering what's the best way to allow every node to talk to every other node - like a megaphone kind of thing. This is necessary because I have a mayor node that should emit to all other nodes. Do you guys have examples/thoughts on this? Thanks
+
+penthouse_bagels — 29/04/2026, 08:28Wednesday, 29 April 2026 at 08:28
+Yep -- so we do have GossipSub. This ships with the repo. It's a pub/sub style broadcast that's built on the basic HTTP request template (send and receive) . This would propagate all the messages to all of the connected nodes in the mesh automatically -- just like a megaphone per your example. You can find that code example here: https://github.com/gensyn-ai/axl/blob/main/examples/python-client/gossipsub/gossipsub.py
+GitHub
+axl/examples/python-client/gossipsub/gossipsub.py at main · gensyn...
+A P2P network node with end-to-end encryption, mesh routing, and built-in MCP/A2A support. - gensyn-ai/axl
+
+
+3
+Add Reaction
+
+ODbeke.FiI'm new here, say hi! — 29/04/2026, 14:45Wednesday, 29 April 2026 at 14:45
+It’s great to be here and connect with all builders
+
+1
+Add Reaction
+
+@X_
+Hello all!   Gensyn Open Agents Office Hours are coming up!   Two sessions are scheduled this week. Bring your questions, ideas, thoughts and join at the zoom links below!  Tuesday 28th April 12pm ET 29 April 2026 at 00:00 (local time):,https://zoom.us/j/96284472122?pwd=4iW3BONrznhmcXUnECCzSeqA2juEXB.1  Friday 1 May 12pm ET 2 May 2026 at 00:00 (local time),https://zoom.us/j/99792479007?pwd=0fBaJbvnRH68PpILh8aQEUdSYjd0rl.1
+
+ODbeke.FiI'm new here, say hi! — 29/04/2026, 14:46Wednesday, 29 April 2026 at 14:46
+Missed first session, reminder set for next session
+
+1
+Add Reaction
+
+@penthouse_bagels
+Yep -- so we do have GossipSub. This ships with the repo. It's a pub/sub style broadcast that's built on the basic HTTP request template (send and receive) . This would propagate all the messages to all of the connected nodes in the mesh automatically -- just like a megaphone per your example. You can find that code example here: https://github.com/gensyn-ai/axl/blob/main/examples/python-client/gossipsub/gossipsub.py
+
+nerom — 29/04/2026, 15:09Wednesday, 29 April 2026 at 15:09
+niceeeeee
+
+1
+Add Reaction
+
+@penthouse_bagels
+I'm Judson on X btw -- hope to see you Friday!
+
+MrNetwork🛡I'm new here, say hi! — 29/04/2026, 15:12Wednesday, 29 April 2026 at 15:12
+Nice to meet you bro
+
+1
+Add Reaction
+
+@penthouse_bagels
+Yep -- so we do have GossipSub. This ships with the repo. It's a pub/sub style broadcast that's built on the basic HTTP request template (send and receive) . This would propagate all the messages to all of the connected nodes in the mesh automatically -- just like a megaphone per your example. You can find that code example here: https://github.com/gensyn-ai/axl/blob/main/examples/python-client/gossipsub/gossipsub.py
+
+Igris 👹 — 29/04/2026, 20:50Wednesday, 29 April 2026 at 20:50
+Is there any way to get the all peer ids in the mesh network without storing them in like a centralised storage?
+
+Gabriel F — 29/04/2026, 20:56Wednesday, 29 April 2026 at 20:56
+Unrelated to the hackathon - would love to get involved with https://docs.delphi.fyi/get-started - is there someone I can reach out to? I'm building a side project with Prediction Markets
+
+@Igris 👹
+Is there any way to get the all peer ids in the mesh network without storing them in like a centralised storage?
+
+penthouse_bagels — 29/04/2026, 20:57Wednesday, 29 April 2026 at 20:57
+Yep, the /topology endpoint gives you this without any centralized storage
+
+When any node calls GET /topology it gets back the tree as the node sees it which includes the public keys of other nodes on the mesh, so every node cna locally discover who else is on the network by pinging its own localhost
+[20:58]Wednesday, 29 April 2026 at 20:58
+But remember although you can see all the peer ids on the mesh network there's no built in service registry. so you can see keys, but cant look up who owns them or what services are on them (this would be a good project on its own btw)
+
+@penthouse_bagels
+Yep, the /topology endpoint gives you this without any centralized storage  When any node calls GET /topology it gets back the tree as the node sees it which includes the public keys of other nodes on the mesh, so every node cna locally discover who else is on the network by pinging its own localhost
+
+Igris 👹 — 29/04/2026, 21:02Wednesday, 29 April 2026 at 21:02
+Okay I tried this calling topology on all nodes (5)  but seems only the booststrap node is able to see most of the nodes on the network on the tree payload. While the other nodes mainly sees the bootstrap node, itself and one other node rather than like 3 more other nodes. Or Is this how it's supposed to work?
+
+penthouse_bagels — 29/04/2026, 23:03Wednesday, 29 April 2026 at 23:03
+all 5 nodes should be visible as they are connected to the same bootstrap, yeah -- one distinction -- since the bootstrap node is the hub everyone connects to, it naturally has the widest view and sees all the nodes. But a leaf node (one that only connected to the bootstrap) will mostly see the bootstrap, itself, and its immediate neighbors in the tree
+[23:03]Wednesday, 29 April 2026 at 23:03
+if that makes sense
+
+1
+Add Reaction
+1 May 2026
+
+@Igris 👹
+Okay I tried this calling topology on all nodes (5)  but seems only the booststrap node is able to see most of the nodes on the network on the tree payload. While the other nodes mainly sees the bootstrap node, itself and one other node rather than like 3 more other nodes. Or Is this how it's supposed to work?
+
+johnnyd9720 — 02:23Friday, 1 May 2026 at 02:23
+Hey Igris, the network is decentralized so no one party has full view.  You can gain a full view by walking the network topology.   Just because /topology isn't returning the full tree, doesn't mean the other nodes are unreachable.  If you walk the network or create a registry (for discovery) you can still programmatically get access to every active node.  If you know a peerId out-of-band you can send/recv with them
+
+@johnnyd9720
+Hey Igris, the network is decentralized so no one party has full view.  You can gain a full view by walking the network topology.   Just because /topology isn't returning the full tree, doesn't mean the other nodes are unreachable.  If you walk the network or create a registry (for discovery) you can still programmatically get access to every active node.  If you know a peerId out-of-band you can send/recv with them
+
+Igris 👹 — 05:57Friday, 1 May 2026 at 05:57
+Alright thanks I've already figured it out
+
+daniel_babjakI'm new here, say hi! — 07:54Friday, 1 May 2026 at 07:54
+Hi Gensyn team,
+
+  We're building SBO3L for Open Agents — a local policy / signing /
+  audit firewall for autonomous AI agents.
+  Tagline: "Don't give your agent a wallet. Give it a mandate."
+  Repo: github.com/B2JK-Industry/SBO3L-ethglobal-openagents-2026
+
+  We're scoping a Gensyn AXL integration for the Best AXL
+  Application track and would love a quick sanity check before
+  committing dev hours. Three scope-fit questions:
+
+  
+Is "SBO3L uses AXL as transport for multi-node policy
+  enforcement" (multiple SBO3L daemons coordinating denials
+  + audit chain replication via AXL signed messages) in scope
+  for the Best AXL Application prize?,
+
+  
+Or are you looking more for projects that USE AXL as the
+  primary product surface (AXL-native agent frameworks, AXL
+  debug tools like Trivo's @0xagentio/axl-client SDK)?,
+
+  
+We'd be a complementary integration — what would a 1st-place
+  AXL submission look like in your view? Reference projects we
+  should study?,
+
+  Thanks!
+  Daniel
+
+MrNetwork🛡I'm new here, say hi! — 16:22Friday, 1 May 2026 at 16:22
+https://x.com/encrypt_wizard/status/2050126986182316130
+
+i’m documenting my progress here, guys; almost done with the app i am building for Gensyn 
+
+@penthouse_bagels hope it’s okay to share such here? (edited)Friday, 1 May 2026 at 16:22
+MrNetwork (@encrypt_wizard)
+one thing most people don't realize about @gensynai AXL: leaf nodes on the mesh only have partial visibility of the network topology
+
+in a decentralized mesh, no single node is guaranteed a full picture; the bootstrap sees more, but there's still no centralized registry or
+
+
+X•Today at 16:15
