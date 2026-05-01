@@ -6,28 +6,40 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "eslint"
+    "lint": "eslint",
+    "axl:setup": "bash scripts/setup-axl.sh",
+    "axl:start": "bash scripts/axl-start.sh",
+    "axl:send": "tsx scripts/axl-send.ts",
+    "axl:listen": "bash scripts/axl-listen.sh"
   },
   "dependencies": {
     "@0gfoundation/0g-ts-sdk": "^1.2.6",
     "@0glabs/0g-serving-broker": "^0.7.5",
     "@rainbow-me/rainbowkit": "^2.2.10",
     "@tanstack/react-query": "^5.100.7",
+    "@a2a-js/sdk": "^0.3.13",
+    "@modelcontextprotocol/sdk": "^1.29.0",
+    "dotenv": "^17.4.2",
     "ethers": "^6.16.0",
+    "express": "^5.2.1",
     "next": "16.2.4",
     "react": "19.2.4",
     "react-dom": "19.2.4",
     "viem": "^2.48.4",
-    "wagmi": "^2.19.5"
+    "wagmi": "^2.19.5",
+    "zod": "^4.4.1"
   },
   "devDependencies": {
     "@tailwindcss/postcss": "^4",
+    "@types/express": "^5.0.6",
     "@types/node": "^20",
     "@types/react": "^19",
     "@types/react-dom": "^19",
     "eslint": "^9",
     "eslint-config-next": "16.2.4",
     "tailwindcss": "^4",
+    "ts-node": "^10.9.2",
+    "tsx": "^4.21.0",
     "typescript": "^5"
   }
 }

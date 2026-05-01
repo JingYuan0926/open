@@ -24,6 +24,12 @@
 .DS_Store
 *.pem
 
+# AXL
+node
+axl/dist/
+.axl/
+axl/node-config.json
+
 # debug
 npm-debug.log*
 yarn-debug.log*
