@@ -27,6 +27,8 @@
 # AXL
 node
 axl/dist/
+.axl/
+axl/node-config.json
 
 # debug
 npm-debug.log*

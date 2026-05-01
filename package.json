@@ -6,7 +6,11 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "eslint"
+    "lint": "eslint",
+    "axl:setup": "bash scripts/setup-axl.sh",
+    "axl:start": "bash scripts/axl-start.sh",
+    "axl:send": "bash scripts/axl-cc-send.sh",
+    "axl:listen": "bash scripts/axl-listen.sh"
   },
   "dependencies": {
     "@0gfoundation/0g-ts-sdk": "^1.2.6",

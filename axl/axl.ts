@@ -61,3 +61,11 @@ export async function axlRecv(
   const fromPeerId = res.headers.get("X-From-Peer-Id") ?? "";
   return { body, fromPeerId };
 }
+
+// AXL truncates X-From-Peer-Id to ~28 hex chars + 'f' padding instead of the full 64-hex pubkey.
+// Use this to resolve a received header back to a known full pubkey.
+export function matchesPeer(reportedHeader: string, fullPubkey: string): boolean {
+  const stripped = reportedHeader.replace(/f+$/i, "");
+  if (!stripped) return false;
+  return fullPubkey.toLowerCase().startsWith(stripped.toLowerCase());
+}
