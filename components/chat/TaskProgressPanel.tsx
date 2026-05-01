@@ -20,7 +20,7 @@ const Row = ({ icon, label, value }: { icon?: React.ReactNode; label: string; va
 export function TaskProgressPanel({ run, mode }: { run: RunState | null; mode: ModeId }) {
   const ens = "righthand.eth";
   return (
-    <aside className="border-l border-border bg-surface-2 flex flex-col min-h-0">
+    <aside className="border-l border-border bg-surface-2 flex flex-col min-h-0 h-full">
       <div className="px-4 py-3.5 border-b border-border flex items-center gap-2">
         <Icon name="cube" size={14} />
         <div className="flex-1">
