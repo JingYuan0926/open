@@ -30,11 +30,11 @@ function readRole(): string {
 }
 
 const ROLE = readRole();
-const IS_SPECTATOR = ROLE === "spectator";
+const IS_USER = ROLE === "user";
 
-const agentCard: AgentCard = IS_SPECTATOR
+const agentCard: AgentCard = IS_USER
   ? {
-      name: "Spectator",
+      name: "User",
       description: "Right-Hand AI display node. Logs incoming messages, never sends.",
       version: "0.1.0",
       protocolVersion: "0.3.0",
@@ -48,7 +48,7 @@ const agentCard: AgentCard = IS_SPECTATOR
           id: "display",
           name: "Display",
           description: "Receives CC'd conversation messages for display. ACK only.",
-          tags: ["demo", "spectator"],
+          tags: ["demo", "user"],
         },
       ],
     }
@@ -103,7 +103,7 @@ class RoleAwareExecutor implements AgentExecutor {
 
     // Publish a reply.
     let replyText: string;
-    if (IS_SPECTATOR) {
+    if (IS_USER) {
       replyText = "received";
     } else {
       replyText = `[echo] ${input}`;
@@ -144,7 +144,7 @@ app.use(
 );
 
 app.listen(PORT, () => {
-  console.log(`[A2A] Role: ${ROLE}${IS_SPECTATOR ? " (spectator — display only)" : ""}`);
+  console.log(`[A2A] Role: ${ROLE}${IS_USER ? " (user — display only)" : ""}`);
   console.log(`[A2A] Listening on http://127.0.0.1:${PORT}`);
   console.log(`[A2A] Agent card: http://127.0.0.1:${PORT}/.well-known/agent-card.json`);
   console.log(`[A2A] AXL forwards inbound /a2a/{peer_id} → POST http://127.0.0.1:${PORT}/`);
