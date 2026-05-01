@@ -8,6 +8,7 @@ import {
     ENS_CHAIN_ID,
     ENS_PARENT_DOMAIN,
     NAME_WRAPPER_ADDRESS,
+    SPECIALIST_REGISTRAR_ADDRESS,
 } from "../networkConfig";
 
 export type ParentStatus = {
@@ -17,15 +18,19 @@ export type ParentStatus = {
     isWrapped: boolean;
     parentOwner: Address | null;
     connectedAddress: Address | undefined;
+    registrarAddress: Address;
+    registrarApproved: boolean;
     canRegister: boolean;
     reason?: string;
 };
 
 // Reads parent-domain state from NameWrapper and tells the caller whether the
-// connected wallet is allowed to mint subnames. Allowed iff:
-//   - parent is wrapped, AND
-//   - connected wallet IS the parent owner, OR
-//   - parent owner has called setApprovalForAll(connected, true) on NameWrapper.
+// connected wallet can register a subname through the SpecialistRegistrar
+// contract. Allowed iff:
+//   - a wallet is connected,
+//   - the registrar contract address is configured,
+//   - the parent is wrapped, AND
+//   - parent owner has called setApprovalForAll(registrar, true) on NameWrapper.
 export function useParentStatus(): ParentStatus {
     const { address: connectedAddress } = useAccount();
     const parentNode = useMemo(
@@ -50,25 +55,17 @@ export function useParentStatus(): ParentStatus {
         query: { enabled: Boolean(isWrapped) },
     });
 
-    const isOwner =
-        !!connectedAddress &&
-        !!parentOwner &&
-        (parentOwner as Address).toLowerCase() ===
-            connectedAddress.toLowerCase();
-
-    const { data: isApproved, isLoading: approvedLoading } = useReadContract({
-        address: NAME_WRAPPER_ADDRESS,
-        abi: NAME_WRAPPER_ABI,
-        functionName: "isApprovedForAll",
-        args:
-            parentOwner && connectedAddress
-                ? [parentOwner as Address, connectedAddress]
+    const { data: registrarApproved, isLoading: approvedLoading } =
+        useReadContract({
+            address: NAME_WRAPPER_ADDRESS,
+            abi: NAME_WRAPPER_ABI,
+            functionName: "isApprovedForAll",
+            args: parentOwner
+                ? [parentOwner as Address, SPECIALIST_REGISTRAR_ADDRESS]
                 : undefined,
-        chainId: ENS_CHAIN_ID,
-        query: {
-            enabled: Boolean(parentOwner && connectedAddress && !isOwner),
-        },
-    });
+            chainId: ENS_CHAIN_ID,
+            query: { enabled: Boolean(parentOwner) },
+        });
 
     const isLoading = wrappedLoading || ownerLoading || approvedLoading;
 
@@ -81,12 +78,10 @@ export function useParentStatus(): ParentStatus {
         reason = `${ENS_PARENT_DOMAIN} is not wrapped in NameWrapper. Wrap it via the ENS app first.`;
     } else if (!parentOwner) {
         reason = "Parent ownership is still loading.";
-    } else if (isOwner) {
-        canRegister = true;
-    } else if (isApproved) {
-        canRegister = true;
+    } else if (!registrarApproved) {
+        reason = `Parent owner ${parentOwner} has not approved the registrar contract (${SPECIALIST_REGISTRAR_ADDRESS}). Run scripts/approve-registrar.ts once.`;
     } else {
-        reason = `Connected wallet ${connectedAddress} does not own ${ENS_PARENT_DOMAIN} (${parentOwner}) and is not an approved operator on NameWrapper.`;
+        canRegister = true;
     }
 
     return {
@@ -96,6 +91,8 @@ export function useParentStatus(): ParentStatus {
         isWrapped: Boolean(isWrapped),
         parentOwner: (parentOwner as Address | undefined) ?? null,
         connectedAddress,
+        registrarAddress: SPECIALIST_REGISTRAR_ADDRESS,
+        registrarApproved: Boolean(registrarApproved),
         canRegister,
         reason,
     };
