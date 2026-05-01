@@ -26,7 +26,7 @@ Each Mac runs **two processes**:
 
 ## One-time setup
 
-`axl/peers.json` only stores **pubkeys + ports** — no IPs. IPs are auto-detected on the spectator and passed to agents via env var. This way the demo survives WiFi changes without commits.
+All 3 Macs peer to **Gensyn's public bootstrap nodes** and join the global Yggdrasil mesh. No LAN coordination, no IP juggling, no firewall fights — the only requirement is that each Mac has internet access. Discovery between our 3 nodes is by pubkey (already in `axl/peers.json`).
 
 ### 1. Pull + install on each Mac
 
@@ -35,38 +35,28 @@ git pull
 npm install            # picks up @a2a-js/sdk, express, tsx, etc.
 ```
 
-### 2a. Spectator (Mac A): run setup
+### 2. On each Mac: run setup with the role
 
 ```bash
+# Mac A (spectator):
 MACHINE_ROLE=spectator npm run axl:setup
+
+# Mac B (agent-b):
+MACHINE_ROLE=agent-b npm run axl:setup
+
+# Mac C (agent-c):
+MACHINE_ROLE=agent-c npm run axl:setup
 ```
 
-The script auto-detects this Mac's LAN IP and prints it like:
+No `SPECTATOR_IP` needed. No `nc -vz` firewall hunt. Each Mac dials Gensyn's public bootstrap nodes directly.
 
-```
-[setup] Auto-detected spectator's LAN IP: 192.168.1.92
-[setup] Share this IP with the agent Macs (Discord). They'll need it as SPECTATOR_IP env var.
-```
+This installs Homebrew/Go/jq if missing, clones `gensyn-ai/axl` into `.axl/`, builds the AXL binary, generates an ed25519 key, and writes `axl/node-config.json` (peers to `tls://34.46.48.224:9001` + `tls://136.111.135.206:9001`).
 
-**Paste that IP into Discord.**
+### Why this works across any networks
 
-### 2b. Agents (Mac B, Mac C): run setup with `SPECTATOR_IP`
+Yggdrasil (the protocol AXL wraps) is a global encrypted overlay. Once you peer to ANY node already in the mesh, you can address any other mesh node by its pubkey. Gensyn's public bootstrap nodes are always in the mesh, so all you need is internet access.
 
-The agents need the spectator's IP to peer to. Pass it as an env var:
-
-```bash
-# Mac B (replace with the IP from step 2a):
-SPECTATOR_IP=192.168.1.92 MACHINE_ROLE=agent-b npm run axl:setup
-
-# Mac C:
-SPECTATOR_IP=192.168.1.92 MACHINE_ROLE=agent-c npm run axl:setup
-```
-
-If you forget `SPECTATOR_IP`, the script errors out with a hint — it won't write a half-broken config.
-
-This installs Homebrew/Go/jq if needed, clones `gensyn-ai/axl` into `.axl/`, builds the AXL binary, generates an ed25519 key, and writes `axl/node-config.json` for that machine's role (with `a2a_addr` set so AXL forwards inbound A2A calls to our Express server).
-
-**Re-running setup is the right move** if the spectator's IP changes (new WiFi). Just re-run with the new `SPECTATOR_IP` — keypair is preserved, only `node-config.json` regenerates.
+Tradeoff: `/topology` will show other AXL users on the public mesh (not just our 3 Macs). We ignore them — `axl:send` always addresses by pubkey, which is unique. The Discord chat noted Convergecast can be unreliable on public mesh due to ephemeral peers, but we don't use it — `/send` and `/a2a` to specific pubkeys work fine.
 
 ### 3. On each Mac: start AXL + A2A agent
 
