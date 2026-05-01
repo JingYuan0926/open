@@ -26,49 +26,47 @@ Each Mac runs **two processes**:
 
 ## One-time setup
 
-### 1. Pick LAN IPs and fill `axl/peers.json`
+`axl/peers.json` only stores **pubkeys + ports** — no IPs. IPs are auto-detected on the spectator and passed to agents via env var. This way the demo survives WiFi changes without commits.
 
-On each Mac, find the LAN IP:
-
-```bash
-ifconfig getifaddr en0       # WiFi
-# or:
-ifconfig getifaddr en1       # ethernet
-```
-
-On **one Mac** (any of them — the spectator is fine), edit `axl/peers.json` with the 3 real LAN IPs:
-
-```json
-{
-  "spectator": { "lanIp": "192.168.1.10", "apiPort": 9002, "pubkey": "" },
-  "agent-b":   { "lanIp": "192.168.1.11", "apiPort": 9002, "pubkey": "" },
-  "agent-c":   { "lanIp": "192.168.1.12", "apiPort": 9002, "pubkey": "" }
-}
-```
-
-`pubkey` stays empty for now — `axl:start` fills these in step 4. Commit + push.
-
-### 2. On each Mac: pull, install deps, run setup
+### 1. Pull + install on each Mac
 
 ```bash
 git pull
 npm install            # picks up @a2a-js/sdk, express, tsx, etc.
 ```
 
-Then on each Mac, run `axl:setup` with that machine's role:
+### 2a. Spectator (Mac A): run setup
 
 ```bash
-# Mac A:
 MACHINE_ROLE=spectator npm run axl:setup
-
-# Mac B:
-MACHINE_ROLE=agent-b   npm run axl:setup
-
-# Mac C:
-MACHINE_ROLE=agent-c   npm run axl:setup
 ```
 
+The script auto-detects this Mac's LAN IP and prints it like:
+
+```
+[setup] Auto-detected spectator's LAN IP: 192.168.1.92
+[setup] Share this IP with the agent Macs (Discord). They'll need it as SPECTATOR_IP env var.
+```
+
+**Paste that IP into Discord.**
+
+### 2b. Agents (Mac B, Mac C): run setup with `SPECTATOR_IP`
+
+The agents need the spectator's IP to peer to. Pass it as an env var:
+
+```bash
+# Mac B (replace with the IP from step 2a):
+SPECTATOR_IP=192.168.1.92 MACHINE_ROLE=agent-b npm run axl:setup
+
+# Mac C:
+SPECTATOR_IP=192.168.1.92 MACHINE_ROLE=agent-c npm run axl:setup
+```
+
+If you forget `SPECTATOR_IP`, the script errors out with a hint — it won't write a half-broken config.
+
 This installs Homebrew/Go/jq if needed, clones `gensyn-ai/axl` into `.axl/`, builds the AXL binary, generates an ed25519 key, and writes `axl/node-config.json` for that machine's role (with `a2a_addr` set so AXL forwards inbound A2A calls to our Express server).
+
+**Re-running setup is the right move** if the spectator's IP changes (new WiFi). Just re-run with the new `SPECTATOR_IP` — keypair is preserved, only `node-config.json` regenerates.
 
 ### 3. On each Mac: start AXL + A2A agent
 
