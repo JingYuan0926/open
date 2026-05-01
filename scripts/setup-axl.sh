@@ -2,7 +2,7 @@
 # scripts/setup-axl.sh — one-time AXL setup for a Mac in the 3-machine demo.
 #
 # Usage:
-#   MACHINE_ROLE=<spectator|agent-b|agent-c> npm run axl:setup
+#   MACHINE_ROLE=<user|agent-b|agent-c> npm run axl:setup
 #
 # What it does:
 #   1. Verifies macOS (Phase 1 is Mac-only).
@@ -32,11 +32,11 @@ fi
 # ---------- 2. MACHINE_ROLE check ----------
 ROLE="${MACHINE_ROLE:-}"
 if [[ -z "$ROLE" ]]; then
-  die "Set MACHINE_ROLE env var. Example: MACHINE_ROLE=spectator npm run axl:setup"
+  die "Set MACHINE_ROLE env var. Example: MACHINE_ROLE=user npm run axl:setup"
 fi
 case "$ROLE" in
-  spectator|agent-b|agent-c) ;;
-  *) die "MACHINE_ROLE must be one of: spectator, agent-b, agent-c. Got: $ROLE" ;;
+  user|agent-b|agent-c) ;;
+  *) die "MACHINE_ROLE must be one of: user, agent-b, agent-c. Got: $ROLE" ;;
 esac
 
 # ---------- 3. peers.json check ----------
@@ -142,6 +142,6 @@ Next steps:
   2. Paste your pubkey into Discord so the others can update peers.json
   3. Pull the updated peers.json once everyone's pubkey is in
   4. \033[1mnpm run axl:listen\033[0m        # in another terminal — see incoming messages
-  $(if [[ "$ROLE" != "spectator" ]]; then printf "5. \033[1mnpm run axl:send <other-agent-role> \"hello\"\033[0m   # talk to the other agent\n"; fi)
+  $(if [[ "$ROLE" != "user" ]]; then printf "5. \033[1mnpm run axl:send <other-agent-role> \"hello\"\033[0m   # talk to the other agent\n"; fi)
 
 EOF

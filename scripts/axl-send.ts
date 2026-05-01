@@ -7,15 +7,15 @@
 //
 // What it does:
 //   1. Reads MACHINE_ROLE from .axl/role.
-//   2. Looks up target.pubkey + spectator.pubkey from axl/peers.json.
+//   2. Looks up target.pubkey + user.pubkey from axl/peers.json.
 //   3. For each destination peer, fetches the remote agent card via
 //      GET http://127.0.0.1:9002/a2a/{peerId} (AXL forwards to remote /.well-known/agent-card.json).
 //   4. Overrides the card's url to AXL's forward endpoint so the SDK posts through AXL.
 //   5. Uses @a2a-js/sdk's ClientFactory to send the A2A message/send call.
 //   6. Tags the message with metadata.fromRole = MY_ROLE so the receiver can label it,
-//      and metadata.cc = true on the spectator copy.
+//      and metadata.cc = true on the user copy.
 //
-// CC pattern: every send goes to (target, spectator) — two A2A calls per logical message.
+// CC pattern: every send goes to (target, user) — two A2A calls per logical message.
 
 import { randomUUID } from "node:crypto";
 import { readFileSync, existsSync } from "node:fs";
@@ -44,7 +44,7 @@ const message = rest.join(" ");
 if (!targetRole || !message) {
   die(
     `Usage: npm run axl:send -- <target-role> "<message>"
-  target-role: spectator | agent-b | agent-c
+  target-role: user | agent-b | agent-c
   example:     npm run axl:send -- agent-c "hello from agent-b"`
   );
 }
@@ -67,13 +67,13 @@ if (!targetEntry.pubkey) {
   );
 }
 
-const spectatorEntry = peers["spectator"];
-const ccSpectator =
-  myRole !== "spectator" &&        // don't CC yourself if you ARE the spectator
-  targetRole !== "spectator" &&    // don't CC the target if it IS the spectator
-  !!spectatorEntry &&
-  !!spectatorEntry.pubkey &&
-  spectatorEntry.pubkey.length > 0;
+const userEntry = peers["user"];
+const ccUser =
+  myRole !== "user" &&        // don't CC yourself if you ARE the user
+  targetRole !== "user" &&    // don't CC the target if it IS the user
+  !!userEntry &&
+  !!userEntry.pubkey &&
+  userEntry.pubkey.length > 0;
 
 // ---------- send ----------
 async function sendOne(
@@ -137,10 +137,10 @@ function extractReplyText(result: unknown): string {
 (async () => {
   try {
     await sendOne(targetEntry.pubkey, targetRole, false);
-    if (ccSpectator) {
-      await sendOne(spectatorEntry!.pubkey, "spectator", true);
-    } else if (targetRole !== "spectator" && spectatorEntry && !spectatorEntry.pubkey) {
-      say("Spectator has no pubkey in peers.json — sent without CC.");
+    if (ccUser) {
+      await sendOne(userEntry!.pubkey, "user", true);
+    } else if (targetRole !== "user" && userEntry && !userEntry.pubkey) {
+      say("User has no pubkey in peers.json — sent without CC.");
     }
   } catch (e) {
     die((e as Error).message);
