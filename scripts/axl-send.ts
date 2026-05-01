@@ -54,9 +54,6 @@ if (!existsSync(rolePath)) {
   die("Run 'npm run axl:setup' first (.axl/role missing).");
 }
 const myRole = readFileSync(rolePath, "utf8").trim();
-if (myRole === "spectator") {
-  die("Spectator is receive-only by design. Use this from an agent role.");
-}
 
 const peers: PeersFile = JSON.parse(readFileSync("axl/peers.json", "utf8"));
 const myEntry = peers[myRole];
@@ -72,7 +69,8 @@ if (!targetEntry.pubkey) {
 
 const spectatorEntry = peers["spectator"];
 const ccSpectator =
-  targetRole !== "spectator" &&
+  myRole !== "spectator" &&        // don't CC yourself if you ARE the spectator
+  targetRole !== "spectator" &&    // don't CC the target if it IS the spectator
   !!spectatorEntry &&
   !!spectatorEntry.pubkey &&
   spectatorEntry.pubkey.length > 0;
