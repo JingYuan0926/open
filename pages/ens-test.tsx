@@ -63,10 +63,8 @@ function ExplorerLink({ hash, label }: { hash: string; label?: string }) {
 function StepLabel({ step }: { step: ReturnType<typeof useRegisterSpecialist>['step'] }) {
     const map: Record<typeof step, string> = {
         idle: '',
-        minting: 'Waiting for mint signature…',
-        mintConfirming: 'Waiting for mint to confirm…',
-        writingRecords: 'Waiting for records signature…',
-        recordsConfirming: 'Waiting for records to confirm…',
+        registering: 'Waiting for signature…',
+        confirming: 'Waiting for confirmation…',
         success: '✓ Registered',
         error: 'Error',
     };
@@ -86,8 +84,7 @@ export default function EnsTestPage() {
         step: walletStep,
         error: walletError,
         result: walletResult,
-        mintHash,
-        recordsHash,
+        txHash: walletTxHash,
         register: walletRegister,
         reset: walletReset,
         isBusy: walletBusy,
@@ -242,9 +239,11 @@ export default function EnsTestPage() {
                                 className="mt-1"
                             />
                             <span>
-                                <span className="block text-sm font-medium">Frontend wallet</span>
+                                <span className="block text-sm font-medium">Frontend wallet (via registrar contract)</span>
                                 <span className="block text-xs text-zinc-500">
-                                    Connected wallet signs both txs. The signer becomes the owner.
+                                    Any wallet can register. One signature, one tx — the
+                                    SpecialistRegistrar contract mints, sets records, and
+                                    transfers the subname to the caller.
                                 </span>
                             </span>
                         </label>
@@ -270,7 +269,7 @@ export default function EnsTestPage() {
                 {/* Status panel */}
                 {mode === 'wallet' ? (
                     <section className="rounded-xl border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-900 p-5 space-y-3">
-                        <h2 className="font-semibold">Parent ownership</h2>
+                        <h2 className="font-semibold">Registrar contract</h2>
                         <dl className="grid grid-cols-1 sm:grid-cols-[160px_1fr] gap-y-1 gap-x-4 text-sm">
                             <dt className="text-zinc-500">Connected wallet</dt>
                             <dd className="font-mono break-all">{walletStatus.connectedAddress ?? '—'}</dd>
@@ -280,6 +279,16 @@ export default function EnsTestPage() {
                             <dd>{walletStatus.isLoading ? '…' : walletStatus.isWrapped ? 'yes' : 'no'}</dd>
                             <dt className="text-zinc-500">Parent owner</dt>
                             <dd className="font-mono break-all">{walletStatus.parentOwner ?? '—'}</dd>
+                            <dt className="text-zinc-500">Registrar contract</dt>
+                            <dd className="font-mono break-all">{walletStatus.registrarAddress}</dd>
+                            <dt className="text-zinc-500">Approved by parent?</dt>
+                            <dd>
+                                {walletStatus.isLoading
+                                    ? '…'
+                                    : walletStatus.registrarApproved
+                                        ? <span className="text-green-600 dark:text-green-400">yes</span>
+                                        : <span className="text-amber-600 dark:text-amber-400">no</span>}
+                            </dd>
                             <dt className="text-zinc-500">Can register?</dt>
                             <dd>
                                 {walletStatus.isLoading ? (
@@ -426,10 +435,9 @@ export default function EnsTestPage() {
                         {mode === 'wallet' && (
                             <>
                                 <StepLabel step={walletStep} />
-                                {(mintHash || recordsHash) && (
-                                    <div className="space-y-1 text-sm">
-                                        {mintHash && <ExplorerLink hash={mintHash} label="mint tx" />}
-                                        {recordsHash && <ExplorerLink hash={recordsHash} label="records tx" />}
+                                {walletTxHash && (
+                                    <div className="text-sm">
+                                        <ExplorerLink hash={walletTxHash} label="register tx" />
                                     </div>
                                 )}
                                 {walletError && (
