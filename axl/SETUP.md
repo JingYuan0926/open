@@ -1,12 +1,16 @@
-# AXL 3-Mac Demo — Setup Runbook
+# AXL 3-Mac Demo — Setup Runbook (A2A flow)
 
-Phase 1 of Right-Hand AI: prove AXL transport works across 3 Macs on the same WiFi.
+Phase 1 of Right-Hand AI: prove AXL transport works across 3 Macs on the same WiFi, using the **A2A protocol** (`/a2a/<peer>` endpoint) for structured agent-to-agent messaging.
 
-- **`spectator`** — Mac A, hub + display. Listens, never sends. Sees the conversation between the two agents on screen.
+- **`spectator`** — Mac A, hub + display. Listens, never sends. Sees the conversation between the two agents on screen via the CC pattern.
 - **`agent-b`** — Mac B, AI agent. Talks to `agent-c`. CCs `spectator`.
 - **`agent-c`** — Mac C, AI agent. Talks to `agent-b`. CCs `spectator`.
 
-Once peered, AXL routes `agent-b ↔ agent-c` traffic transparently through `spectator` (Yggdrasil mesh).
+Each Mac runs **two processes**:
+1. **AXL node** (Go binary) — handles encrypted P2P transport
+2. **A2A agent server** (`axl/agent.ts` via Express) — receives inbound `/a2a/{peer}` calls, logs incoming, replies (echo for agents, ACK for spectator)
+
+`npm run axl:start` launches both together.
 
 ---
 
@@ -14,15 +18,15 @@ Once peered, AXL routes `agent-b ↔ agent-c` traffic transparently through `spe
 
 - macOS (any recent version)
 - Node.js 20+
-- 5 minutes for first-time setup (Homebrew + Go + AXL build)
+- 5 minutes for first-time setup (Homebrew + Go + AXL build + npm deps)
 
-`scripts/setup-axl.sh` will install Homebrew, Go, jq, and openssl if missing.
+`scripts/setup-axl.sh` handles Homebrew, Go, jq, openssl. `npm install` handles `@a2a-js/sdk` + `express` + `tsx`.
 
 ---
 
 ## One-time setup
 
-### 1. User picks LAN IPs and fills `axl/peers.json`
+### 1. Pick LAN IPs and fill `axl/peers.json`
 
 On each Mac, find the LAN IP:
 
@@ -32,7 +36,7 @@ ifconfig getifaddr en0       # WiFi
 ifconfig getifaddr en1       # ethernet
 ```
 
-Edit `axl/peers.json` with the 3 real LAN IPs. Commit + push to GitHub.
+On **one Mac** (any of them — the spectator is fine), edit `axl/peers.json` with the 3 real LAN IPs:
 
 ```json
 {
@@ -42,113 +46,96 @@ Edit `axl/peers.json` with the 3 real LAN IPs. Commit + push to GitHub.
 }
 ```
 
-`pubkey` stays empty for now — it gets filled in step 4.
+`pubkey` stays empty for now — `axl:start` fills these in step 4. Commit + push.
 
-### 2. Each Mac: pull, install deps, run setup
-
-On every Mac:
+### 2. On each Mac: pull, install deps, run setup
 
 ```bash
 git pull
-npm install
+npm install            # picks up @a2a-js/sdk, express, tsx, etc.
 ```
 
 Then on each Mac, run `axl:setup` with that machine's role:
 
 ```bash
-# Mac A (spectator):
+# Mac A:
 MACHINE_ROLE=spectator npm run axl:setup
 
-# Mac B (agent-b):
-MACHINE_ROLE=agent-b npm run axl:setup
+# Mac B:
+MACHINE_ROLE=agent-b   npm run axl:setup
 
-# Mac C (agent-c):
-MACHINE_ROLE=agent-c npm run axl:setup
+# Mac C:
+MACHINE_ROLE=agent-c   npm run axl:setup
 ```
 
-This installs Homebrew/Go/jq if needed, clones `gensyn-ai/axl` into `.axl/`, builds the binary, generates an ed25519 key, and writes `axl/node-config.json` for that machine's role.
+This installs Homebrew/Go/jq if needed, clones `gensyn-ai/axl` into `.axl/`, builds the AXL binary, generates an ed25519 key, and writes `axl/node-config.json` for that machine's role (with `a2a_addr` set so AXL forwards inbound A2A calls to our Express server).
 
-### 3. Each Mac: start the node
+### 3. On each Mac: start AXL + A2A agent
 
 ```bash
 npm run axl:start
 ```
 
-The node prints its public key on startup. The script also:
-- Writes the pubkey into your role's entry in `axl/peers.json`
-- Copies the pubkey to your clipboard (`pbcopy`)
-- Keeps the node running in the foreground (Ctrl+C to stop)
+This launches both processes:
+- AXL node prints its `Public Key` and listening address
+- A2A agent server prints `[A2A] Listening on http://127.0.0.1:9004`
+- After ~3 seconds, the script writes the pubkey into your role's entry in `axl/peers.json`, copies it to your clipboard, and stays running
 
-**Leave this terminal open** — the node needs to keep running.
+**Leave this terminal open** — both processes have to keep running.
+
+⚠️ **First time only**: macOS pops "Do you want the application 'node' to accept incoming network connections?" → click **Allow**. (Spectator only — agents dial outbound.)
 
 ### 4. Exchange pubkeys
 
-Each Mac pastes its pubkey into Discord. Pick **one machine** (e.g. the spectator) to:
+Each Mac pastes its pubkey into Discord. On **one machine** (e.g. spectator):
 
-1. Paste all 3 pubkeys into `axl/peers.json` under each role's `pubkey` field
+1. Edit `axl/peers.json`, paste each role's pubkey into its `pubkey` field
 2. Commit + push
 
-Then on the other 2 Macs:
+On the other Macs (in a NEW terminal — leave the start terminal alone):
 
 ```bash
 git pull
 ```
 
-(No restart needed — `axl:send` and `axl:listen` read pubkeys at use time.)
-
-### 5. First time only: macOS firewall
-
-When the spectator's node starts, macOS will pop up:
-
-> **"Do you want the application 'node' to accept incoming network connections?"**
-
-Click **Allow**. If the firewall is set to block all incoming connections, go to **System Settings → Network → Firewall → Options** and explicitly allow `.axl/node`.
-
-The agent Macs only dial OUTbound, so they don't need this.
+No restart needed — `axl:send` reads pubkeys at send time.
 
 ---
 
-## The demo (60 seconds)
+## The demo (A2A flow)
 
-Each Mac needs **3 terminals**: one running the node, one for `axl:listen`, one for `axl:send` (agents only).
+The agent.ts server already logs incoming messages — no separate `axl:listen` needed. Just open one extra terminal on each Mac and run:
 
 ### Mac A (spectator)
 
-```bash
-# terminal 1 — node (already running from setup step 3)
-
-# terminal 2:
-npm run axl:listen
-```
-
-You'll see incoming messages from both agents:
+The terminal running `npm run axl:start` is your display. Watch for incoming messages — both agents' messages (with `(cc)` tag) appear here.
 
 ```
-2026-05-01T12:34:56Z [agent-b] hello from b
-2026-05-01T12:34:58Z [agent-c] got it, here's a reply
+2026-05-01T12:34:56.789Z [agent-b (cc) → spectator] hello from agent-b
+2026-05-01T12:34:58.012Z [agent-c (cc) → spectator] reply from agent-c
 ```
 
 ### Mac B (agent-b)
 
+Already running `npm run axl:start` in terminal 1. In a new terminal:
+
 ```bash
-# terminal 1 — node already running
-
-# terminal 2:
-npm run axl:listen
-
-# terminal 3:
-npm run axl:send -- agent-c "hello from b"
+npm run axl:send -- agent-c "hello from agent-b"
 ```
+
+You'll see:
+```
+2026-05-01T12:34:56.789Z → agent-c    reply: [echo] hello from agent-b
+2026-05-01T12:34:56.812Z cc → spectator  reply: received
+```
+
+The "reply" line is what the receiver returned (echo from agents, "received" from spectator). That's the round-trip confirmation A2A gives you that raw `/send` doesn't.
 
 ### Mac C (agent-c)
 
+Same as Mac B but talking to agent-b:
+
 ```bash
-# terminal 1 — node already running
-
-# terminal 2:
-npm run axl:listen
-
-# terminal 3:
 npm run axl:send -- agent-b "got it, here's a reply"
 ```
 
@@ -156,26 +143,26 @@ Continue back-and-forth as long as you want.
 
 ### `--` separator
 
-Note the `--` after `axl:send`. That tells `npm` "everything after this is for the script, not for npm itself." Without it, npm sometimes swallows args that look like flags. Always use:
+Note the `--` after `axl:send` — tells npm "everything after this is for the script." Always use:
 
 ```bash
 npm run axl:send -- <target-role> "<message>"
 ```
 
-Or call the bash script directly:
+Or call directly:
 
 ```bash
-bash scripts/axl-cc-send.sh agent-c "hello"
+npx tsx scripts/axl-send.ts agent-c "hello"
 ```
 
 ---
 
 ## What success looks like
 
-- Each agent's `axl:listen` shows the **other** agent's messages within ~1 second.
-- The spectator's `axl:listen` shows **both** agents' messages.
-- Each message is labeled `[agent-b]` or `[agent-c]` correctly.
-- Running `curl -s http://127.0.0.1:9002/topology | jq` on any Mac shows all 3 nodes in `peers[]` with `up: true`.
+- Each agent's `axl:start` terminal shows messages from the other agent: `[agent-c → agent-b] hello back`
+- Spectator's `axl:start` terminal shows BOTH directions, tagged `(cc)`
+- Each `axl:send` prints the receiver's reply (echo for agents, "received" for spectator)
+- Running `curl -s http://127.0.0.1:9002/topology | jq` on any Mac shows all 3 nodes in `peers[]` with `up: true`
 
 ---
 
@@ -184,63 +171,63 @@ bash scripts/axl-cc-send.sh agent-c "hello"
 ### `axl:setup` fails: `MACHINE_ROLE must be one of...`
 
 Set the env var before running:
-
 ```bash
 MACHINE_ROLE=spectator npm run axl:setup
 ```
 
 ### `axl:setup` fails: `Phase 1 is macOS-only`
 
-You're on Linux/WSL/Windows. Phase 1 is intentionally Mac-only — see the Phase 1 plan. Switching to Mac is the easiest path.
+You're on Linux/WSL/Windows. Phase 1 is intentionally Mac-only. Switching to Mac is the easiest path.
 
 ### `axl:start` runs but `peers[].up: false` everywhere
 
-The TLS handshake never completed. Likely causes:
+TLS handshake never completed. Likely:
+1. **Firewall** — Mac A (spectator) blocking port 7001. System Settings → Network → Firewall, allow `node`.
+2. **Wrong LAN IP** — re-check `ifconfig getifaddr en0` on each Mac.
+3. **Spectator listening on `127.0.0.1`** — re-run `MACHINE_ROLE=spectator npm run axl:setup`.
 
-1. **Firewall** — Mac A (spectator) is blocking inbound port 7001. Check System Settings → Network → Firewall, allow `.axl/node`.
-2. **Wrong LAN IP** — check `axl/peers.json` matches `ifconfig getifaddr en0` on each Mac. WiFi IPs change between networks.
-3. **Spectator listening on `127.0.0.1` instead of `0.0.0.0`** — re-run `MACHINE_ROLE=spectator npm run axl:setup` to regenerate `node-config.json`.
-
-Quick test from an agent Mac:
-
+Quick test from an agent:
 ```bash
 nc -vz <spectator-LAN-IP> 7001
 ```
+Times out → firewall. Refused → spectator's node not running.
 
-If "operation timed out" → firewall. If "connection refused" → spectator's node isn't running.
+### `axl:send` errors: `Card fetch failed for agent-c... HTTP 502`
 
-### `axl:send` says `Target role 'agent-c' has no pubkey in peers.json`
+AXL can't reach the target peer's A2A server. Check:
+1. Target Mac's `axl:start` is running (both processes)
+2. Target's pubkey in `peers.json` is correct
+3. The TLS mesh is healthy — `/topology` shows target as `up: true`
 
-The other agent hasn't run `axl:start` yet, or `peers.json` wasn't updated/pulled. Make sure:
+### `axl:send` errors: `Card fetch failed... HTTP 504` or hangs ~30s
 
-1. Each Mac has run `npm run axl:start`
-2. The pubkey from `axl:start`'s output ended up in `axl/peers.json`
-3. Every Mac has `git pull`'d after pubkeys were committed
+The target's AXL node received the call but the local A2A server (Express on :9004) isn't responding. Check the target's `axl:start` log for `[A2A] Listening on http://127.0.0.1:9004`. If absent, `axl/agent.ts` failed to start — check error in the same log.
 
-### `axl:send` returns HTTP 200 but `axl:listen` shows nothing
+### `axl:send` works but spectator sees nothing
 
-The message reached AXL but was routed to a different stream. Cause: the JSON payload contains a `service` field, which AXL's multiplexer dispatches to the MCP router instead of the recv queue.
+CC failed:
+1. `spectator.pubkey` is empty in `peers.json` — fill it, push, pull on agents.
+2. Spectator's A2A server isn't running.
 
-Our `axl-cc-send.sh` doesn't add `service`, so this only happens if you're sending custom payloads. Check the payload doesn't have top-level `"service"`.
+`axl:send` prints `cc → spectator  reply: received` per send when CC succeeds. Watch for that line.
 
-### Spectator only sees one agent's messages
+### `axl:start` says `[A2A] Listening on :9004` but agent.ts crashes
 
-CC failed. Causes:
+Most likely missing dep. Run:
+```bash
+npm install
+```
 
-1. `spectator.pubkey` is empty in `peers.json` when `axl:send` ran — add it, push, pull on agents.
-2. Spectator's node isn't actually running.
+### A2A messages appear but sender label says `?`
 
-`axl-cc-send.sh` prints `cc → spectator ✓` per send when CC succeeds. Watch for that line.
-
-### `tsx scripts/resolve-peer.ts` errors
-
-Likely `node_modules` aren't installed: `npm install` first. Or the script's `import` from `../axl/axl.js` can't find the file — ensure `axl/axl.ts` exists (it ships in the repo).
+The sender forgot to set `metadata.fromRole`. Our `axl-send.ts` always sets it, so this only happens if you POST to AXL manually or use a different client.
 
 ---
 
 ## What's next (out of scope for Phase 1)
 
-- **Phase 2**: switch from raw `/send` to AXL's native `/a2a/<peer>` endpoint for proper task lifecycle (submitted → working → completed)
-- **Phase 3**: cross-node MCP routing (`POST /mcp/<peer>/<service>`) — agent on Mac C invokes a tool on the spectator's machine
-- **Phase 4**: wire the Next.js chat UI to drive `axl:send` and display `axl:listen` output
-- **Phase 5+**: replace the spectator Mac with native Windows/WSL for the eventual non-tech user demo
+- **Phase 2**: cross-node MCP routing (`POST /mcp/<peer>/<service>`) — a specialist on agent-b invokes a tool exposed by agent-c's MCP server through AXL
+- **Phase 3**: GossipSub broadcast — replace explicit CC with pub/sub topic the spectator subscribes to
+- **Phase 4**: wire the Next.js chat UI (`pages/index.tsx`) to drive `axl:send` and stream agent.ts logs back
+- **Phase 5**: replace one Mac with native Windows/WSL for the eventual non-tech user demo
+- **Phase 6**: real specialist agents on 0G Compute (planning, research, troubleshoot personas) instead of echo

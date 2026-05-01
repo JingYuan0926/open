@@ -107,13 +107,27 @@ if [[ -z "$SPECTATOR_IP" || "$SPECTATOR_IP" == "null" ]]; then
 fi
 
 CONFIG="$ROOT/axl/node-config.json"
+# a2a_addr enables AXL to forward inbound /a2a/{peer} → local Express A2A server (port 9004).
+# Without it, inbound A2A messages are silently dropped.
 if [[ "$ROLE" == "spectator" ]]; then
   cat > "$CONFIG" <<EOF
-{"PrivateKeyPath": "axl/private.pem", "Peers": [], "Listen": ["tls://0.0.0.0:${SPECTATOR_LISTEN_PORT}"], "api_port": ${API_PORT}}
+{
+  "PrivateKeyPath": "axl/private.pem",
+  "Peers": [],
+  "Listen": ["tls://0.0.0.0:${SPECTATOR_LISTEN_PORT}"],
+  "api_port": ${API_PORT},
+  "a2a_addr": "http://127.0.0.1"
+}
 EOF
 else
   cat > "$CONFIG" <<EOF
-{"PrivateKeyPath": "axl/private.pem", "Peers": ["tls://${SPECTATOR_IP}:${SPECTATOR_LISTEN_PORT}"], "Listen": [], "api_port": ${API_PORT}}
+{
+  "PrivateKeyPath": "axl/private.pem",
+  "Peers": ["tls://${SPECTATOR_IP}:${SPECTATOR_LISTEN_PORT}"],
+  "Listen": [],
+  "api_port": ${API_PORT},
+  "a2a_addr": "http://127.0.0.1"
+}
 EOF
 fi
 say "Wrote $CONFIG (role=$ROLE)"
