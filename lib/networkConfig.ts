@@ -3,6 +3,9 @@ import { sepolia } from 'viem/chains';
 export const ENS_CHAIN = sepolia;
 export const ENS_CHAIN_ID = sepolia.id;
 
+// Chains exposed to RainbowKit / wagmi for the connected wallet.
+export const chains = [sepolia] as const;
+
 // ENS NameWrapper on Sepolia
 export const NAME_WRAPPER_ADDRESS = '0x0635513f179D50A207757E05759CbD106d7dFcE8' as const;
 
@@ -10,8 +13,13 @@ export const NAME_WRAPPER_ADDRESS = '0x0635513f179D50A207757E05759CbD106d7dFcE8'
 export const ENS_PUBLIC_RESOLVER_ADDRESS = '0xE99638b40E4Fff0129D56f03b55b6bbC4BBE49b5' as const;
 
 // Parent domain that owns the specialist subdomains. Must be a wrapped name
-// owned (or approved) by the registrar wallet.
-export const ENS_PARENT_DOMAIN = process.env.ENS_PARENT_DOMAIN ?? 'righthand.eth';
+// whose owner (or NameWrapper-approved operator) is the connected wallet.
+// Read NEXT_PUBLIC_ first so the value is available in the browser; fall back
+// to the server-only var, then a sane default.
+export const ENS_PARENT_DOMAIN =
+    process.env.NEXT_PUBLIC_ENS_PARENT_DOMAIN ??
+    process.env.ENS_PARENT_DOMAIN ??
+    'righthand.eth';
 
 // Sepolia RPC. Falls back to a public node so the app boots without a key.
 export const SEPOLIA_RPC_URL =
