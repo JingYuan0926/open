@@ -1,5 +1,17 @@
 {
-  "spectator": { "lanIp": "192.168.1.10", "apiPort": 9002, "pubkey": "" },
-  "agent-b":   { "lanIp": "192.168.1.11", "apiPort": 9002, "pubkey": "" },
-  "agent-c":   { "lanIp": "192.168.1.12", "apiPort": 9002, "pubkey": "" }
+  "spectator": {
+    "lanIp": "192.168.1.10",
+    "apiPort": 9002,
+    "pubkey": ""
+  },
+  "agent-b": {
+    "lanIp": "192.168.1.11",
+    "apiPort": 9002,
+    "pubkey": "2b4ba8352341d9c335e0a23e7d25e932ec0a16db9f936b0bcad51be30dd8b801"
+  },
+  "agent-c": {
+    "lanIp": "192.168.1.12",
+    "apiPort": 9002,
+    "pubkey": ""
+  }
 }

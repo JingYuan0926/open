@@ -63,13 +63,19 @@ for pkg in go jq openssl; do
   fi
 done
 
-# Go version sanity (AXL requires 1.25.5+)
+# Go version sanity. AXL pins to Go 1.25 because its gvisor dep doesn't compile
+# on Go 1.26+ (gvisor ships go125.go AND go126.go that redeclare the same constants).
+# We force the 1.25 toolchain via GOTOOLCHAIN; Go 1.21+ auto-downloads it on first use.
 GO_VER=$(go version | awk '{print $3}' | sed 's/go//')
 GO_MAJOR=$(echo "$GO_VER" | cut -d. -f1)
 GO_MINOR=$(echo "$GO_VER" | cut -d. -f2)
 if [[ "$GO_MAJOR" -lt 1 ]] || { [[ "$GO_MAJOR" -eq 1 ]] && [[ "$GO_MINOR" -lt 25 ]]; }; then
   warn "Go $GO_VER detected; AXL needs 1.25+. Run: brew upgrade go"
 fi
+if [[ "$GO_MAJOR" -gt 1 ]] || { [[ "$GO_MAJOR" -eq 1 ]] && [[ "$GO_MINOR" -gt 25 ]]; }; then
+  warn "Go $GO_VER is newer than AXL's pinned 1.25 — forcing GOTOOLCHAIN=go1.25.5 (one-time auto-download)"
+fi
+export GOTOOLCHAIN=go1.25.5
 
 # ---------- 6. Clone + build AXL ----------
 AXL_DIR="$ROOT/.axl"
@@ -82,8 +88,12 @@ else
 fi
 
 if [[ ! -x "$AXL_DIR/node" ]] || [[ "$AXL_DIR/cmd/node" -nt "$AXL_DIR/node" ]]; then
-  say "Building AXL node binary..."
-  ( cd "$AXL_DIR" && go build -o node ./cmd/node/ )
+  say "Building AXL node binary (using Go toolchain $GOTOOLCHAIN)..."
+  if ! ( cd "$AXL_DIR" && GOTOOLCHAIN="$GOTOOLCHAIN" go build -o node ./cmd/node/ ); then
+    die "AXL build failed. If you saw 'gvisor.dev/gvisor ... redeclared' errors,
+         your Go version is too new for gvisor. The script forces GOTOOLCHAIN=$GOTOOLCHAIN
+         which should auto-download Go 1.25.5 — make sure you have network access."
+  fi
 fi
 say "AXL binary ready: $AXL_DIR/node ($(du -h "$AXL_DIR/node" | awk '{print $1}'))"
 
