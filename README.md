@@ -453,7 +453,7 @@ right-hand-ai/
 - Full agent autonomy without per-action approval (intentionally not built — trust is the moat)
 - Auto-installation of arbitrary unsigned binaries
 - Cross-chain agent ownership
-
+his is 
 ---
 
 ## Demo
