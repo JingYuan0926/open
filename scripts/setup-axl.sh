@@ -108,17 +108,20 @@ else
 fi
 
 # ---------- 8. Determine LAN IPs ----------
-# Auto-detect own LAN IP (en0 = WiFi on most Macs; fallback en1).
+# Auto-detect own LAN IP. WiFi might be on en0, en1, or en2 depending on Mac model
+# (especially after Ethernet adapter shuffling). Probe all and grab the first usable one.
 detect_lan_ip() {
   local ip
-  ip=$(ifconfig getifaddr en0 2>/dev/null || true)
-  if [[ -z "$ip" ]]; then
-    ip=$(ifconfig getifaddr en1 2>/dev/null || true)
-  fi
-  if [[ -z "$ip" ]]; then
-    ip=$(ifconfig | awk '/inet 192\.168\./ {print $2; exit}')
-  fi
-  echo "$ip"
+  for iface in en0 en1 en2 en3 en4; do
+    ip=$(ifconfig getifaddr "$iface" 2>/dev/null || true)
+    # Skip empty + skip APIPA self-assigned (169.254.x.x) + skip loopback
+    if [[ -n "$ip" && ! "$ip" =~ ^169\.254\. && ! "$ip" =~ ^127\. ]]; then
+      echo "$ip"
+      return 0
+    fi
+  done
+  # Last-resort: grep the first private/RFC1918 inet from ifconfig output
+  ifconfig | awk '/inet (192\.168\.|10\.|172\.(1[6-9]|2[0-9]|3[01])\.)/ {print $2; exit}'
 }
 
 OWN_IP=$(detect_lan_ip)
