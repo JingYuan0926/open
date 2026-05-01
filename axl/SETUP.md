@@ -2,13 +2,13 @@
 
 Phase 1 of Right-Hand AI: prove AXL transport works across 3 Macs on the same WiFi, using the **A2A protocol** (`/a2a/<peer>` endpoint) for structured agent-to-agent messaging.
 
-- **`spectator`** — Mac A, hub + display. Listens, never sends. Sees the conversation between the two agents on screen via the CC pattern.
-- **`agent-b`** — Mac B, AI agent. Talks to `agent-c`. CCs `spectator`.
-- **`agent-c`** — Mac C, AI agent. Talks to `agent-b`. CCs `spectator`.
+- **`user`** — Mac A, hub + display. Listens, never sends. Sees the conversation between the two agents on screen via the CC pattern.
+- **`agent-b`** — Mac B, AI agent. Talks to `agent-c`. CCs `user`.
+- **`agent-c`** — Mac C, AI agent. Talks to `agent-b`. CCs `user`.
 
 Each Mac runs **two processes**:
 1. **AXL node** (Go binary) — handles encrypted P2P transport
-2. **A2A agent server** (`axl/agent.ts` via Express) — receives inbound `/a2a/{peer}` calls, logs incoming, replies (echo for agents, ACK for spectator)
+2. **A2A agent server** (`axl/agent.ts` via Express) — receives inbound `/a2a/{peer}` calls, logs incoming, replies (echo for agents, ACK for user)
 
 `npm run axl:start` launches both together.
 
@@ -38,8 +38,8 @@ npm install            # picks up @a2a-js/sdk, express, tsx, etc.
 ### 2. On each Mac: run setup with the role
 
 ```bash
-# Mac A (spectator):
-MACHINE_ROLE=spectator npm run axl:setup
+# Mac A (user):
+MACHINE_ROLE=user npm run axl:setup
 
 # Mac B (agent-b):
 MACHINE_ROLE=agent-b npm run axl:setup
@@ -48,7 +48,7 @@ MACHINE_ROLE=agent-b npm run axl:setup
 MACHINE_ROLE=agent-c npm run axl:setup
 ```
 
-No `SPECTATOR_IP` needed. No `nc -vz` firewall hunt. Each Mac dials Gensyn's public bootstrap nodes directly.
+No `USER_IP` needed. No `nc -vz` firewall hunt. Each Mac dials Gensyn's public bootstrap nodes directly.
 
 This installs Homebrew/Go/jq if missing, clones `gensyn-ai/axl` into `.axl/`, builds the AXL binary, generates an ed25519 key, and writes `axl/node-config.json` (peers to `tls://34.46.48.224:9001` + `tls://136.111.135.206:9001`).
 
@@ -71,11 +71,11 @@ This launches both processes:
 
 **Leave this terminal open** — both processes have to keep running.
 
-⚠️ **First time only**: macOS pops "Do you want the application 'node' to accept incoming network connections?" → click **Allow**. (Spectator only — agents dial outbound.)
+⚠️ **First time only**: macOS may pop "Do you want the application 'node' to accept incoming network connections?" → click **Allow** (or just toggle the firewall off). With public-bootstrap mode all Macs dial outbound, but the prompt may still appear depending on Mac config.
 
 ### 4. Exchange pubkeys
 
-Each Mac pastes its pubkey into Discord. On **one machine** (e.g. spectator):
+Each Mac pastes its pubkey into Discord. On **one machine** (e.g. user):
 
 1. Edit `axl/peers.json`, paste each role's pubkey into its `pubkey` field
 2. Commit + push
@@ -94,13 +94,13 @@ No restart needed — `axl:send` reads pubkeys at send time.
 
 The agent.ts server already logs incoming messages — no separate `axl:listen` needed. Just open one extra terminal on each Mac and run:
 
-### Mac A (spectator)
+### Mac A (user)
 
 The terminal running `npm run axl:start` is your display. Watch for incoming messages — both agents' messages (with `(cc)` tag) appear here.
 
 ```
-2026-05-01T12:34:56.789Z [agent-b (cc) → spectator] hello from agent-b
-2026-05-01T12:34:58.012Z [agent-c (cc) → spectator] reply from agent-c
+2026-05-01T12:34:56.789Z [agent-b (cc) → user] hello from agent-b
+2026-05-01T12:34:58.012Z [agent-c (cc) → user] reply from agent-c
 ```
 
 ### Mac B (agent-b)
@@ -114,10 +114,10 @@ npm run axl:send -- agent-c "hello from agent-b"
 You'll see:
 ```
 2026-05-01T12:34:56.789Z → agent-c    reply: [echo] hello from agent-b
-2026-05-01T12:34:56.812Z cc → spectator  reply: received
+2026-05-01T12:34:56.812Z cc → user  reply: received
 ```
 
-The "reply" line is what the receiver returned (echo from agents, "received" from spectator). That's the round-trip confirmation A2A gives you that raw `/send` doesn't.
+The "reply" line is what the receiver returned (echo from agents, "received" from user). That's the round-trip confirmation A2A gives you that raw `/send` doesn't.
 
 ### Mac C (agent-c)
 
@@ -148,8 +148,8 @@ npx tsx scripts/axl-send.ts agent-c "hello"
 ## What success looks like
 
 - Each agent's `axl:start` terminal shows messages from the other agent: `[agent-c → agent-b] hello back`
-- Spectator's `axl:start` terminal shows BOTH directions, tagged `(cc)`
-- Each `axl:send` prints the receiver's reply (echo for agents, "received" for spectator)
+- User's `axl:start` terminal shows BOTH directions, tagged `(cc)`
+- Each `axl:send` prints the receiver's reply (echo for agents, "received" for user)
 - Running `curl -s http://127.0.0.1:9002/topology | jq` on any Mac shows all 3 nodes in `peers[]` with `up: true`
 
 ---
@@ -160,25 +160,24 @@ npx tsx scripts/axl-send.ts agent-c "hello"
 
 Set the env var before running:
 ```bash
-MACHINE_ROLE=spectator npm run axl:setup
+MACHINE_ROLE=user npm run axl:setup
 ```
 
 ### `axl:setup` fails: `Phase 1 is macOS-only`
 
 You're on Linux/WSL/Windows. Phase 1 is intentionally Mac-only. Switching to Mac is the easiest path.
 
-### `axl:start` runs but `peers[].up: false` everywhere
+### `axl:start` shows no peers connecting
 
-TLS handshake never completed. Likely:
-1. **Firewall** — Mac A (spectator) blocking port 7001. System Settings → Network → Firewall, allow `node`.
-2. **Wrong LAN IP** — re-check `ifconfig getifaddr en0` on each Mac.
-3. **Spectator listening on `127.0.0.1`** — re-run `MACHINE_ROLE=spectator npm run axl:setup`.
-
-Quick test from an agent:
+In public-bootstrap mode, you should see at least the two Gensyn bootstrap peers in `/topology` with `"up": true`:
 ```bash
-nc -vz <spectator-LAN-IP> 7001
+curl -s http://127.0.0.1:9002/topology | python3 -m json.tool | head -30
 ```
-Times out → firewall. Refused → spectator's node not running.
+
+If neither bootstrap is up, check:
+1. **Internet access** — the Mac needs outbound TCP to `34.46.48.224:9001` and `136.111.135.206:9001`.
+2. **Outbound firewall blocking** — venue networks sometimes block non-standard ports. Try the demo on a phone hotspot.
+3. **AXL node binary missing or stale** — re-run `npm run axl:setup`.
 
 ### `axl:send` errors: `Card fetch failed for agent-c... HTTP 502`
 
@@ -191,13 +190,13 @@ AXL can't reach the target peer's A2A server. Check:
 
 The target's AXL node received the call but the local A2A server (Express on :9004) isn't responding. Check the target's `axl:start` log for `[A2A] Listening on http://127.0.0.1:9004`. If absent, `axl/agent.ts` failed to start — check error in the same log.
 
-### `axl:send` works but spectator sees nothing
+### `axl:send` works but user sees nothing
 
 CC failed:
-1. `spectator.pubkey` is empty in `peers.json` — fill it, push, pull on agents.
-2. Spectator's A2A server isn't running.
+1. `user.pubkey` is empty in `peers.json` — fill it, push, pull on agents.
+2. User's A2A server isn't running.
 
-`axl:send` prints `cc → spectator  reply: received` per send when CC succeeds. Watch for that line.
+`axl:send` prints `cc → user  reply: received` per send when CC succeeds. Watch for that line.
 
 ### `axl:start` says `[A2A] Listening on :9004` but agent.ts crashes
 
@@ -215,7 +214,7 @@ The sender forgot to set `metadata.fromRole`. Our `axl-send.ts` always sets it, 
 ## What's next (out of scope for Phase 1)
 
 - **Phase 2**: cross-node MCP routing (`POST /mcp/<peer>/<service>`) — a specialist on agent-b invokes a tool exposed by agent-c's MCP server through AXL
-- **Phase 3**: GossipSub broadcast — replace explicit CC with pub/sub topic the spectator subscribes to
+- **Phase 3**: GossipSub broadcast — replace explicit CC with pub/sub topic the user subscribes to
 - **Phase 4**: wire the Next.js chat UI (`pages/index.tsx`) to drive `axl:send` and stream agent.ts logs back
 - **Phase 5**: replace one Mac with native Windows/WSL for the eventual non-tech user demo
 - **Phase 6**: real specialist agents on 0G Compute (planning, research, troubleshoot personas) instead of echo
