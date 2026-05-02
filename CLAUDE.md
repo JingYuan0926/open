@@ -441,18 +441,25 @@ telegram-bot/
 
 ## How it integrates with Phase 2a
 
-The `install_telegram_bot` MCP tool (still to be wired into [`axl/mcp-servers/aws.ts`](axl/mcp-servers/aws.ts)) becomes a thin SSH wrapper. Three calls, all gated by the same MCP permission prompt as `walk_before` / `launch_instance`:
+The bot lives at [github.com/derek2403/openclaw](https://github.com/derek2403/openclaw) as its own repo (extracted from `telegram-bot/` for distribution). The **working integration path is `demo:cli-aws`** ([`scripts/demo-cli-aws.ts`](scripts/demo-cli-aws.ts)), which does the equivalent of:
 
 ```bash
-ssh ec2-user@<ip> 'sudo yum install -y nodejs git'
-ssh ec2-user@<ip> 'git clone <repo>/open && cd open/telegram-bot && cp .env.example .env'
-ssh ec2-user@<ip> "cd open/telegram-bot && \
-  sed -i 's|^BOT_TOKEN=.*|BOT_TOKEN=$BOT_TOKEN|' .env && \
-  sed -i 's|^0G_PRIVATE_KEY=.*|0G_PRIVATE_KEY=$ZG_KEY|' .env"
-ssh ec2-user@<ip> 'cd open/telegram-bot && nohup ./start.sh > openclaw.log 2>&1 &'
+sudo dnf install -y git nodejs npm
+git clone https://github.com/derek2403/openclaw.git ~/openclaw
+cd ~/openclaw
+cat <<'EOF' > .env   # base64-piped from the local Mac's .env
+BOT_TOKEN=…
+0G_PRIVATE_KEY=…
+EOF
+chmod 600 .env
+bash start.sh
 ```
 
-After that, the user opens [t.me/RightHandAI_OpenClaw](https://t.me/RightHandAI_OpenClaw), sends `/start`, and chats. Every reply is qwen inference billed against the 0G ledger.
+…all over a single `ssh -tt` session that streams the remote AL2023 motd + a faked `[ec2-user@host ~]$ <cmd>` prompt before each command, so the audience watches it run live in the popup terminal. The `.env` is base64-encoded on the Mac, inlined into the install script, and decoded on EC2 — no scp, no leaked secrets in logs.
+
+The `install_telegram_bot` MCP tool in [`axl/mcp-servers/aws.ts`](axl/mcp-servers/aws.ts) (still to be wired) is the AXL-routed equivalent: same SSH calls, but invoked as a JSON-RPC tool over the AXL mesh + MCP router instead of from a local Mac terminal. When it's wired, it should `child_process.spawn('tsx', ['scripts/demo-cli-aws.ts'])` rather than re-implementing the SSH dance.
+
+After install, the user opens [t.me/RightHandAI_OpenClaw](https://t.me/RightHandAI_OpenClaw), sends `/start`, and chats. Every reply is qwen inference billed against the 0G ledger.
 
 ## 0G Compute integration
 
