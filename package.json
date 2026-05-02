@@ -25,6 +25,8 @@
     "demo:cdp": "tsx scripts/demo-cdp.ts",
     "demo:before": "tsx scripts/demo-before.ts",
     "demo:after": "tsx scripts/demo-after.ts",
+    "demo:cli-aws": "tsx scripts/demo-cli-aws.ts",
+    "demo:final": "tsx scripts/demo-final.ts",
     "capture-urls": "tsx scripts/capture-urls.ts"
   },
   "dependencies": {
