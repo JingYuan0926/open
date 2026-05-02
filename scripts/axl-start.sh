@@ -41,12 +41,16 @@ API_PORT=$(jq -r ".\"$ROLE\".apiPort" "$PEERS")
 A2A_PORT=9004
 
 # ---------- Pre-flight: kill any orphaned processes from previous runs ----------
-say "Pre-flight: cleaning up any orphan AXL / agent processes…"
+say "Pre-flight: cleaning up any orphan AXL / agent / MCP processes…"
 pkill -f "${ROOT}/.axl/node" 2>/dev/null || true
 pkill -f "tsx axl/agent.ts" 2>/dev/null || true
+pkill -f "axl/mcp-router.py" 2>/dev/null || true
+pkill -f "tsx axl/mcp-servers/aws.ts" 2>/dev/null || true
 
 # Free ports if anything is still bound (lsof on macOS).
-for port in "$API_PORT" "$A2A_PORT" 7001 7002; do
+# 9003 = mcp-router.py, 9100 = aws.ts (Phase 2). Cleared even on agent roles
+# to keep the script uniform — they just won't be re-bound on agents.
+for port in "$API_PORT" "$A2A_PORT" 7001 7002 9003 9100; do
   if command -v lsof >/dev/null 2>&1; then
     PIDS=$(lsof -ti:"$port" 2>/dev/null || true)
     if [[ -n "$PIDS" ]]; then
@@ -70,11 +74,15 @@ NODE_PID=$!
 # Cleanup function used by signal trap and on partial failure.
 cleanup() {
   echo
-  say "Stopping (node=$NODE_PID, agent=${AGENT_PID:-?})…"
-  [[ -n "${AGENT_PID:-}" ]] && kill "$AGENT_PID" 2>/dev/null || true
+  say "Stopping (node=$NODE_PID, agent=${AGENT_PID:-?}, router=${ROUTER_PID:-?}, aws=${AWS_PID:-?})…"
+  [[ -n "${AWS_PID:-}" ]]    && kill "$AWS_PID"    2>/dev/null || true
+  [[ -n "${ROUTER_PID:-}" ]] && kill "$ROUTER_PID" 2>/dev/null || true
+  [[ -n "${AGENT_PID:-}" ]]  && kill "$AGENT_PID"  2>/dev/null || true
   kill "$NODE_PID" 2>/dev/null || true
   wait "$NODE_PID" 2>/dev/null || true
-  [[ -n "${AGENT_PID:-}" ]] && wait "$AGENT_PID" 2>/dev/null || true
+  [[ -n "${AGENT_PID:-}" ]]  && wait "$AGENT_PID"  2>/dev/null || true
+  [[ -n "${ROUTER_PID:-}" ]] && wait "$ROUTER_PID" 2>/dev/null || true
+  [[ -n "${AWS_PID:-}" ]]    && wait "$AWS_PID"    2>/dev/null || true
   exit 0
 }
 trap cleanup INT TERM
@@ -122,8 +130,34 @@ say "Starting A2A agent server…"
 "$TSX_BIN" axl/agent.ts &
 AGENT_PID=$!
 
+# ---------- 3. Phase 2: MCP router + aws MCP server (user role only) ----------
+# Agents (agent-b, agent-c) only SEND MCP — they don't run the router or any
+# local MCP server. Only the user receives MCP, so we start router + service
+# only on that role. The aws.ts server self-registers with the router on boot.
+ROUTER_PID=""
+AWS_PID=""
+if [[ "$ROLE" == "user" ]]; then
+  if [[ ! -f "$ROOT/axl/mcp-router.py" ]]; then
+    warn "axl/mcp-router.py missing — Phase 2 MCP routing won't work. Run: 'npm run axl:setup' or pull latest."
+  elif ! command -v python3 >/dev/null 2>&1; then
+    warn "python3 missing — can't start mcp-router.py. brew install python."
+  else
+    say "Starting MCP router (port 9003) …"
+    python3 "$ROOT/axl/mcp-router.py" --port 9003 &
+    ROUTER_PID=$!
+    sleep 1
+    say "Starting aws MCP server (port 9100) …"
+    "$TSX_BIN" axl/mcp-servers/aws.ts &
+    AWS_PID=$!
+  fi
+fi
+
 echo ""
-say "Both processes running (node=$NODE_PID, agent=$AGENT_PID). Ctrl+C to stop."
+if [[ "$ROLE" == "user" ]]; then
+  say "Processes running (node=$NODE_PID, agent=$AGENT_PID, router=$ROUTER_PID, aws=$AWS_PID). Ctrl+C to stop."
+else
+  say "Processes running (node=$NODE_PID, agent=$AGENT_PID). Ctrl+C to stop."
+fi
 echo ""
 
 # Polling loop — survives even if either process restarts. Better than `wait -n`
@@ -139,5 +173,17 @@ while true; do
     "$TSX_BIN" axl/agent.ts &
     AGENT_PID=$!
     say "A2A agent restarted (pid=$AGENT_PID)."
+  fi
+  if [[ -n "$ROUTER_PID" ]] && ! kill -0 "$ROUTER_PID" 2>/dev/null; then
+    warn "MCP router ($ROUTER_PID) exited. Restarting…"
+    python3 "$ROOT/axl/mcp-router.py" --port 9003 &
+    ROUTER_PID=$!
+    say "MCP router restarted (pid=$ROUTER_PID)."
+  fi
+  if [[ -n "$AWS_PID" ]] && ! kill -0 "$AWS_PID" 2>/dev/null; then
+    warn "aws MCP server ($AWS_PID) exited. Restarting…"
+    "$TSX_BIN" axl/mcp-servers/aws.ts &
+    AWS_PID=$!
+    say "aws MCP server restarted (pid=$AWS_PID)."
   fi
 done

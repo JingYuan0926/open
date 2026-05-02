@@ -112,9 +112,30 @@ fi
 # Yggdrasil mesh. No need for any Mac to listen, no IP coordination required —
 # discovery is by pubkey (already in axl/peers.json). Works across any networks
 # as long as each Mac has internet access.
+#
+# Phase 2: the user role additionally enables MCP routing. AXL forwards inbound
+# /mcp/<pk>/<service> calls to router_addr:router_port, where mcp-router.py
+# listens and dispatches to registered MCP servers (axl/mcp-servers/aws.ts).
+# Agent roles don't need router_addr — they only send MCP, never receive.
 API_PORT=$(jq -r ".\"$ROLE\".apiPort" "$PEERS")
 CONFIG="$ROOT/axl/node-config.json"
-cat > "$CONFIG" <<EOF
+if [[ "$ROLE" == "user" ]]; then
+  cat > "$CONFIG" <<EOF
+{
+  "PrivateKeyPath": "axl/private.pem",
+  "Peers": [
+    "tls://34.46.48.224:9001",
+    "tls://136.111.135.206:9001"
+  ],
+  "Listen": [],
+  "api_port": ${API_PORT},
+  "a2a_addr": "http://127.0.0.1",
+  "router_addr": "http://127.0.0.1",
+  "router_port": 9003
+}
+EOF
+else
+  cat > "$CONFIG" <<EOF
 {
   "PrivateKeyPath": "axl/private.pem",
   "Peers": [
@@ -126,8 +147,22 @@ cat > "$CONFIG" <<EOF
   "a2a_addr": "http://127.0.0.1"
 }
 EOF
+fi
 say "Wrote $CONFIG (role=$ROLE, public-bootstrap mode)"
 say "All 3 Macs join Gensyn's public mesh — no LAN coordination needed."
+
+# ---------- 8b. Phase 2: Python deps for the MCP router (user role only) ----------
+if [[ "$ROLE" == "user" ]]; then
+  if ! command -v python3 >/dev/null 2>&1; then
+    warn "python3 not found — needed for axl/mcp-router.py. brew install python"
+  else
+    if ! python3 -c "import aiohttp" 2>/dev/null; then
+      say "Installing aiohttp for mcp-router.py …"
+      python3 -m pip install --user --quiet aiohttp || \
+        warn "pip install aiohttp failed; you may need to: python3 -m pip install --user aiohttp"
+    fi
+  fi
+fi
 
 # ---------- 9. Persist MACHINE_ROLE for other scripts ----------
 echo "$ROLE" > "$AXL_DIR/role"

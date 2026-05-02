@@ -225,9 +225,122 @@ scripts/
 
 ---
 
-# Next phase — MCP execution + ENS task marketplace
+# Phase 2a — MCP execution via AXL (working)
 
-Phase 1 (above) proves transport. Phase 2 turns the demo into the real product flow: **a user posts a task on ENS, OpenClaw specialists bid/sign in, the elected swarm coordinates over AXL, and MCP performs the actual work on the user's machine.**
+Phase 1 proved AXL **transport**. Phase 2a proves AXL **execution**: an agent on Mac B/C invokes a tool on Mac A (the user) via AXL's built-in `/mcp/<peer>/<service>` route. Each call shows a y/n approval prompt on the user's terminal before any action runs. Demo target: `agent-b` provisions an EC2 instance on the user's AWS account, then `agent-c` SSHes in and installs nanoclaw — both via MCP, both gated by user approval.
+
+## Architecture
+
+```
+agent-b/c Mac                       user's Mac (4 procs)                   AWS / browser
+─────────────                       ─────────────────────                  ──────────────
+
+$ npm run mcp:demo:launch                                                      
+  │                                                                            
+scripts/mcp-call.ts                                                            
+  │                                                                            
+  ├─ POST :9002/mcp/<u-pk>/aws ──► AXL node ─Yggdrasil─► AXL on user           
+                                                              │                
+                                                              ▼                
+                                                        mcp-router.py :9003    
+                                                              │                
+                                                              ▼                
+                                                  axl/mcp-servers/aws.ts :9100 
+                                                              │                
+                                                              ├─ permission prompt (y/n)
+                                                              │                
+                                                              ├──► child_process `open <url>` ──► default browser → AWS console
+                                                              ├──► @aws-sdk/client-ec2     ──► EC2 RunInstances
+                                                              └──► ssh2 exec                ──► EC2 instance
+```
+
+## MCP service: `aws` (4 tools)
+
+| tool | impl | what user sees |
+|------|------|----------------|
+| `open_console` | `open` shells out to user's default browser with hardcoded launch-wizard URL | AWS launch-instance wizard appears |
+| `launch_instance({name?})` | `@aws-sdk/client-ec2` `RunInstances` (AMI `ami-0c02fb55…`, t2.micro, sg `nanoclaw-demo-sg` opens 22, key `nanoclaw-key`) | terminal prints `{instance_id, public_ip}` after ~30s |
+| `show_in_console({instance_id})` | `open <instance-detail-URL>` (URL templated with the new ID) | browser navigates to the instance row |
+| `install_nanoclaw({instance_id, public_ip})` | `ssh2` SSH (key `axl/nanoclaw-key.pem`) → run `$NANOCLAW_INSTALL_CMD` (default: placeholder echo) | install output streamed to terminal |
+
+URLs in [`axl/mcp-servers/aws-helpers/urls.ts`](axl/mcp-servers/aws-helpers/urls.ts) — swap deep-links for whatever console pages the demo narrative needs (each becomes its own approve-able call).
+
+## Request shape (verified against gensyn-ai/axl)
+
+Sender:
+```
+POST http://127.0.0.1:9002/mcp/<peer-pubkey>/aws
+{ "jsonrpc":"2.0", "id":1, "method":"tools/call", "params":{"name":"launch_instance","arguments":{"name":"…"}} }
+```
+
+AXL forwards to `router_addr:router_port` (`http://127.0.0.1:9003`) as:
+```
+POST /route
+{ "service":"aws", "request": <jsonrpc>, "from_peer_id":"<28hex>" }
+```
+
+Router POSTs the inner `request` body to `aws.ts /mcp` with headers `X-From-Peer-Id`, `X-Service`. `aws.ts` resolves peer→role via `matchesPeer()` (the same X-From-Peer-Id truncation handler from Phase 1), prompts approval, runs the tool, returns:
+```
+{ "jsonrpc":"2.0", "id":1, "result":{ "content":[{"type":"text","text":"<JSON>"}] } }
+```
+
+Router wraps as `{response: <jsonrpc>, error: null}` and propagates back through AXL to the sender.
+
+## File map
+
+```
+axl/
+  mcp-router.py                          # vendored verbatim from gensyn-ai/axl/integrations/mcp_routing/
+  mcp-servers/
+    permission.ts                        # serialised terminal y/n approval gate
+    aws.ts                               # Express MCP service on :9100; 4 tools, self-registers with router
+    aws-helpers/
+      urls.ts                            # hardcoded AWS console URLs (deep-links)
+      browser.ts                         # `open <url>` wrapper (macOS)
+      ec2.ts                             # @aws-sdk/client-ec2 wrapper (AMI/sg/keypair hardcoded)
+      ssh.ts                             # ssh2 wrapper with retry-on-boot
+scripts/
+  mcp-call.ts                            # sender CLI: POST /mcp/<pk>/<svc> with JSON-RPC envelope
+  mcp-demo.sh                            # convenience wrappers for the 4 demo steps
+```
+
+## npm scripts
+
+| command | purpose |
+|---------|---------|
+| `npm run mcp:call -- <role> <svc> <tool> '<json>'` | low-level: any tool on any role |
+| `npm run mcp:demo:open` | `aws.open_console` on user |
+| `npm run mcp:demo:launch` | `aws.launch_instance` on user (override name with `INSTANCE_NAME=`) |
+| `INSTANCE_ID=i-… npm run mcp:demo:show` | `aws.show_in_console` on user |
+| `INSTANCE_ID=i-… INSTANCE_IP=x.x.x.x npm run mcp:demo:install` | `aws.install_nanoclaw` on user |
+
+## Setup additions (user role only)
+
+`scripts/setup-axl.sh` for `MACHINE_ROLE=user` adds `"router_addr": "http://127.0.0.1", "router_port": 9003` to `axl/node-config.json` and `pip3 install --user aiohttp` (mcp_router.py's only dep).
+
+`scripts/axl-start.sh` for `MACHINE_ROLE=user` additionally background-starts `python3 axl/mcp-router.py --port 9003` and `tsx axl/mcp-servers/aws.ts` after the AXL node is up. Cleanup trap and polling loop monitor all 4 processes.
+
+For the live demo, the user pre-creates an AWS access key (in `~/.aws/credentials`) and an EC2 keypair `nanoclaw-key` (saved as `axl/nanoclaw-key.pem`, chmod 600). They log into the AWS console in their default browser before stage so cookies persist when `open_console` runs.
+
+## Mock mode
+
+`MCP_AWS_MODE=mock` env var on the user's Mac → handlers skip browser + AWS + SSH and return fake `{instance_id, public_ip}` data after a 2s sleep. Same routing path, no AWS dependency. Useful for testing transport without burning real EC2 minutes.
+
+`MCP_AUTO_APPROVE=1` env var bypasses the y/n prompt (for headless testing only — it defeats the whole point of MCP-as-execution-moat for live demos).
+
+## Phase 2a gotchas
+
+- **`matchesPeer` already handled the X-From-Peer-Id truncation in Phase 1** — `aws.ts` reuses it from `axl/axl.ts` to label the inbound caller as `agent-b` / `agent-c` in the approval prompt. Don't string-equality compare against the full pubkey.
+- **mcp-router.py needs aiohttp.** `setup-axl.sh` installs it via `pip3 install --user`. If your Mac's `python3` is from Homebrew Python, the install lands in `~/Library/Python/3.x/lib/...` — `python3 axl/mcp-router.py` finds it automatically.
+- **Service registration is at runtime.** `aws.ts` calls `POST /register` on the router on boot; if the router restarts, the service auto-reregisters (router calls go through, error response surfaces in agent's `mcp:call` log).
+- **Each tool invocation is independent and serialised.** The permission gate uses a promise chain so two concurrent MCP calls don't race on stdin. For demo, that's fine; for production, swap to a UI-based queue.
+- **Phase 1 still works in parallel.** A2A `/a2a/<peer>` and AXL `/send` are unchanged. `axl:send` continues to CC the user; `mcp:call` is additive, not replacing.
+
+---
+
+# Phase 2b — ENS task marketplace + royalties (next)
+
+Phase 2a wires execution. Phase 2b turns the demo into the real product flow: **a user posts a task on ENS, OpenClaw specialists bid/sign in, the elected swarm coordinates over AXL, and MCP performs the actual work on the user's machine.**
 
 ## End-to-end target flow
 
@@ -270,16 +383,16 @@ Phase 1 (above) proves transport. Phase 2 turns the demo into the real product f
                                             chooses to run a local instance.
 ```
 
-## What needs building (Phase 2 scope)
+## What needs building (Phase 2b scope)
 
 - **Task contract on Sepolia (or 0G Chain).** New contract `TaskMarket` with `postTask(skillTags, budget, deadline)` → emits `TaskPosted(taskId, ...)`. Specialists listen for these and call `signOn(taskId)` to claim.
 - **Specialist subscription daemon.** Each OpenClaw specialist runs a watcher (background process or AXL-registered hook) that filters `TaskPosted` events by skill match. On match, it auto-signs.
 - **Coordinator selection.** First-N-to-sign-on, or weighted by reputation/price. Probably runs as one of the agent roles in the AXL mesh — same agent.ts shape, different agent card.
-- **MCP routing on the user's connector.** Add `router_addr` to user's `node-config.json` so AXL forwards inbound `/mcp/{user-peer}/{service}` to a Python MCP router (`integrations/mcp_routing/mcp_router.py` from AXL), which dispatches to the local MCP server (`axl/mcp-server.ts` was the email demo — Phase 2 needs filesystem + terminal MCP servers behind a permission UI).
-- **Permission UI on the user's machine.** Each MCP tool call surfaces a popup: "Specialist `postgres-debug` wants to run `psql -c '\\l'`. [Approve] [Deny]." Bundled into the local connector binary alongside AXL.
+- **More MCP services beyond `aws`.** Phase 2a only ships the `aws` service. Add `filesystem`, `terminal`, `git`, etc. — each a sibling of `axl/mcp-servers/aws.ts` that self-registers with the router.
+- **Web-based permission UI.** Phase 2a uses a terminal y/n prompt. Phase 2b should pop a modal in the user's chat UI: "Specialist `postgres-debug` wants to run `psql -c '\\l'`. [Approve] [Deny]." Bundled into the local connector binary.
 - **Royalty router.** Each successful task call triggers an on-chain payment to the iNFT owner (looked up via the `0g_token_id` ENS text record). Could route through the existing `SpecialistRegistrar` contract or a new `RoyaltyRouter`.
 
-## File map (Phase 2 — to be created)
+## File map (Phase 2b — to be created)
 
 ```
 contracts/
@@ -295,8 +408,7 @@ axl/
   specialists/
     postgres-debug.ts                    # example skill-specialised agent.ts
     openclaw-setup.ts
-  mcp-router.py                          # the AXL Python MCP router (vendored)
-  mcp-servers/
+  mcp-servers/                           # Phase 2a already ships `aws.ts`; add more siblings:
     filesystem.ts                        # local tool: file read/write with approval
     terminal.ts                          # local tool: shell exec with approval
 connector/                               # the eventual single-binary connector
