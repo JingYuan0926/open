@@ -17,33 +17,33 @@
 
 import { detectOpener, openUrl } from "../axl/mcp-servers/aws-helpers/browser";
 
-// Default flow: AWS free-tier landing → signup page → sign-in page.
-// AI handles navigation; user types credentials themselves at the sign-in
-// step (auth is the user's job, not the AI's — MCP execution moat).
+// Default flow with per-step pacing.
+//   pause: true  → wait for Enter after this URL (user is typing credentials,
+//                  filling forms, or doing some other interactive action)
+//   pause: false → auto-advance after DELAY_MS (just navigation)
 //
-// Add more URLs to extend the narrative (e.g. console home → IAM → EC2).
+// Only the credential-entry page pauses by default; everything else flows.
 //
-// Note on the sign-in URL: the long OAuth one with code_challenge/state is
-// session-bound and expires. For repeat demos, swap in the generic:
-//   https://signin.aws.amazon.com/console
-const DEFAULT_URLS = [
-  // 1. AWS free-tier landing
-  "https://aws.amazon.com/free/?trk=06dd4e64-3ddf-405e-bec9-d2414185926c&sc_channel=ps&ef_id=CjwKCAjwntHPBhAaEiwA_Xp6RnY7G9dZSmhU0VN020DtbAGdylUEVlHhJo1aVZtg-qgsAyMYQNVwjRoCB7sQAvD_BwE:G:s&s_kwcid=AL!4422!3!798628412789!e!!g!!aws!23606217014!196761071947&gad_campaignid=23606217014&gbraid=0AAAAADjHtp-Y4t6OtBT9be4A-mk1PZ4NA&gclid=CjwKCAjwntHPBhAaEiwA_Xp6RnY7G9dZSmhU0VN020DtbAGdylUEVlHhJo1aVZtg-qgsAyMYQNVwjRoCB7sQAvD_BwE",
-  // 2. Signup form
-  "https://signin.aws.amazon.com/signup?request_type=register&trk=06dd4e64-3ddf-405e-bec9-d2414185926c&sc_channel=ps",
-  // 3. Sign-in OAuth landing
-  "https://ap-southeast-2.signin.aws.amazon.com/oauth?client_id=arn%3Aaws%3Asignin%3A%3A%3Aconsole%2Fcanvas&code_challenge=zp9yZvuW7Y8NKnoaaROzZ8ew5F8PcdtJgPucPpwpK8I&code_challenge_method=SHA-256&response_type=code&redirect_uri=https%3A%2F%2Fconsole.aws.amazon.com%2Fconsole%2Fhome%3Fca-oauth-flow-id%3D29dc%26hashArgs%3D%2523%26isauthcode%3Dtrue%26oauthStart%3D1777701383684%26state%3DhashArgsFromTB_ap-southeast-2_2b6ff061c8208fa1",
-  // 4. Sign-in root email (user types here)
-  "https://signin.aws.amazon.com/signin?client_id=arn%3Aaws%3Asignin%3A%3A%3Aconsole%2Fcanvas&redirect_uri=https%3A%2F%2Fconsole.aws.amazon.com%2Fconsole%2Fhome%3Fca-oauth-flow-id%3D29dc%26hashArgs%3D%2523%26isauthcode%3Dtrue%26oauthStart%3D1777701383684%26state%3DhashArgsFromTB_ap-southeast-2_2b6ff061c8208fa1&page=resolve&code_challenge=zp9yZvuW7Y8NKnoaaROzZ8ew5F8PcdtJgPucPpwpK8I&code_challenge_method=SHA-256&backwards_compatible=true",
-  // 5. Console home (after sign-in)
-  "https://us-east-1.console.aws.amazon.com/console/home?region=us-east-1#",
-  // 6. EC2 dashboard
-  "https://us-east-1.console.aws.amazon.com/ec2/home?region=us-east-1",
-  // 7. Launch wizard — last browser step. After this the demo transitions to
-  //    SDK calls (RunInstances + ssh2) — instead of clicking through the
-  //    wizard's name/AMI/type/keypair/sg pages, the AI calls RunInstances
-  //    directly with all params hardcoded. See `npm run test:aws launch`.
-  "https://us-east-1.console.aws.amazon.com/ec2/home?region=us-east-1#LaunchInstances:",
+// Note on session-bound URLs: OAuth/sign-in URLs with code_challenge+state
+// expire. For repeat demos, swap the generic https://signin.aws.amazon.com/console
+type Step = { url: string; pause: boolean; label: string };
+
+const DEFAULT_STEPS: Step[] = [
+  { label: "AWS free-tier landing", pause: false,
+    url: "https://aws.amazon.com/free/?trk=06dd4e64-3ddf-405e-bec9-d2414185926c&sc_channel=ps&ef_id=CjwKCAjwntHPBhAaEiwA_Xp6RnY7G9dZSmhU0VN020DtbAGdylUEVlHhJo1aVZtg-qgsAyMYQNVwjRoCB7sQAvD_BwE:G:s&s_kwcid=AL!4422!3!798628412789!e!!g!!aws!23606217014!196761071947&gad_campaignid=23606217014&gbraid=0AAAAADjHtp-Y4t6OtBT9be4A-mk1PZ4NA&gclid=CjwKCAjwntHPBhAaEiwA_Xp6RnY7G9dZSmhU0VN020DtbAGdylUEVlHhJo1aVZtg-qgsAyMYQNVwjRoCB7sQAvD_BwE" },
+  { label: "Signup form", pause: false,
+    url: "https://signin.aws.amazon.com/signup?request_type=register&trk=06dd4e64-3ddf-405e-bec9-d2414185926c&sc_channel=ps" },
+  { label: "Sign-in OAuth landing", pause: false,
+    url: "https://ap-southeast-2.signin.aws.amazon.com/oauth?client_id=arn%3Aaws%3Asignin%3A%3A%3Aconsole%2Fcanvas&code_challenge=zp9yZvuW7Y8NKnoaaROzZ8ew5F8PcdtJgPucPpwpK8I&code_challenge_method=SHA-256&response_type=code&redirect_uri=https%3A%2F%2Fconsole.aws.amazon.com%2Fconsole%2Fhome%3Fca-oauth-flow-id%3D29dc%26hashArgs%3D%2523%26isauthcode%3Dtrue%26oauthStart%3D1777701383684%26state%3DhashArgsFromTB_ap-southeast-2_2b6ff061c8208fa1" },
+  // ★ PAUSE here — user types email and password
+  { label: "Root email login (you type credentials here)", pause: true,
+    url: "https://signin.aws.amazon.com/signin?client_id=arn%3Aaws%3Asignin%3A%3A%3Aconsole%2Fcanvas&redirect_uri=https%3A%2F%2Fconsole.aws.amazon.com%2Fconsole%2Fhome%3Fca-oauth-flow-id%3D29dc%26hashArgs%3D%2523%26isauthcode%3Dtrue%26oauthStart%3D1777701383684%26state%3DhashArgsFromTB_ap-southeast-2_2b6ff061c8208fa1&page=resolve&code_challenge=zp9yZvuW7Y8NKnoaaROzZ8ew5F8PcdtJgPucPpwpK8I&code_challenge_method=SHA-256&backwards_compatible=true" },
+  { label: "Console home", pause: false,
+    url: "https://us-east-1.console.aws.amazon.com/console/home?region=us-east-1#" },
+  { label: "EC2 dashboard", pause: false,
+    url: "https://us-east-1.console.aws.amazon.com/ec2/home?region=us-east-1#Home:" },
+  { label: "Launch wizard", pause: false,
+    url: "https://us-east-1.console.aws.amazon.com/ec2/home?region=us-east-1#LaunchInstances:" },
 ];
 
 const cyan = "\x1b[36m";
@@ -53,7 +53,11 @@ const dim = "\x1b[2m";
 const reset = "\x1b[0m";
 
 const cliUrls = process.argv.slice(2);
-const urls = cliUrls.length > 0 ? cliUrls : DEFAULT_URLS;
+// CLI URLs override the default flow. CLI URLs default to all-pause so user
+// can step through arbitrary URL lists; flip with AUTO=1.
+const steps: Step[] = cliUrls.length > 0
+  ? cliUrls.map(url => ({ url, pause: true, label: url.slice(0, 50) }))
+  : DEFAULT_STEPS;
 const AUTO = process.env.AUTO === "1";
 const delayMs = parseInt(process.env.DELAY_MS ?? "7000", 10);
 
@@ -84,34 +88,36 @@ async function waitForEnter(promptMsg: string): Promise<void> {
   console.log(`${cyan}━━ test-browser ━━${reset}`);
   console.log(`${dim}opener: ${opener.cmd} ${opener.args("<url>").filter(Boolean).join(" ")}${reset}`);
   if (AUTO) {
-    console.log(`${dim}AUTO=1 — auto-advance with ${delayMs}ms between URLs${reset}`);
+    console.log(`${dim}AUTO=1 — auto-advance every step (${delayMs}ms gap)${reset}`);
   } else {
-    console.log(`${dim}interactive mode — press Enter to advance to next URL (set AUTO=1 to auto-walk)${reset}`);
+    const pauseCount = steps.filter(s => s.pause).length;
+    console.log(`${dim}${steps.length} URLs total — ${pauseCount} pause for input, rest auto-advance every ${delayMs}ms${reset}`);
   }
-  console.log(`${dim}${urls.length} URL${urls.length === 1 ? "" : "s"} total${reset}`);
   console.log("");
 
-  for (let i = 0; i < urls.length; i++) {
-    const url = urls[i];
+  for (let i = 0; i < steps.length; i++) {
+    const s = steps[i];
     const stepNum = i + 1;
-    console.log(`${yellow}step ${stepNum}/${urls.length}${reset}: opening`);
-    console.log(`${dim}  ${url.slice(0, 90)}${url.length > 90 ? "…" : ""}${reset}`);
-    await openUrl(url);
+    const tag = s.pause && !AUTO ? `${cyan}[wait]${reset}` : `${dim}[auto]${reset}`;
+    console.log(`${yellow}step ${stepNum}/${steps.length}${reset} ${tag} ${s.label}`);
+    console.log(`${dim}  ${s.url.slice(0, 90)}${s.url.length > 90 ? "…" : ""}${reset}`);
+    await openUrl(s.url);
     console.log(`${green}  ✓ opened${reset}`);
 
-    if (i < urls.length - 1) {
-      if (AUTO) {
-        console.log(`${dim}  waiting ${delayMs}ms before next step…${reset}`);
-        await new Promise(r => setTimeout(r, delayMs));
+    if (i < steps.length - 1) {
+      const shouldPause = s.pause && !AUTO;
+      if (shouldPause) {
+        await waitForEnter(`Finish on this page, then press Enter → next URL (Ctrl+C to quit)`);
       } else {
-        await waitForEnter(`Press Enter when done with this page → next URL (Ctrl+C to quit)`);
+        console.log(`${dim}  auto-advancing in ${delayMs}ms…${reset}`);
+        await new Promise(r => setTimeout(r, delayMs));
       }
       console.log("");
     }
   }
 
   console.log("");
-  console.log(`${green}━━ done — ${urls.length} pages opened ━━${reset}`);
+  console.log(`${green}━━ done — ${steps.length} pages opened ━━${reset}`);
 })().catch(err => {
   console.error(`\nerror: ${err instanceof Error ? err.message : String(err)}`);
   process.exit(1);
