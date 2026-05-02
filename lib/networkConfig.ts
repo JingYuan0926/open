@@ -18,7 +18,7 @@ export const ENS_PUBLIC_RESOLVER_ADDRESS = '0xE99638b40E4Fff0129D56f03b55b6bbC4B
 // v2 deployment exposes `getOwned(address)` for one-call discovery (used by
 // `useMySpecialists`). Older versions without it return zero specialists.
 export const SPECIALIST_REGISTRAR_ADDRESS =
-    '0x8B599e9900841323AF203a2704869124c0d7Ad91' as const;
+    '0xAc1531A6b130aa3027130F97e33c80698e5cfafc' as const;
 
 // TaskMarket on Sepolia — approved by the parent owner of righthand.eth on
 // NameWrapper. Each postTask also mints task-{id}.righthand.eth and writes

@@ -30,6 +30,7 @@ interface INameWrapper {
 
 interface IPublicResolver {
     function setText(bytes32 node, string calldata key, string calldata value) external;
+    function setAddr(bytes32 node, address a) external;
 }
 
 /// @title SpecialistRegistrar
@@ -127,6 +128,12 @@ contract SpecialistRegistrar {
         resolver.setText(node, KEY_TOKEN_ID,      records.tokenId);
         resolver.setText(node, KEY_PRICE,         records.price);
         resolver.setText(node, KEY_VERSION,       records.version);
+
+        // Point the ENS `addr` record at the registering wallet so that any
+        // payment sent to `<label>.righthand.eth` resolves to the owner. Must
+        // be done before the safeTransferFrom — once the wrapper transfers
+        // ownership away, this contract can no longer write to the resolver.
+        resolver.setAddr(node, msg.sender);
 
         // Hand the wrapped token to the caller.
         nameWrapper.safeTransferFrom(address(this), msg.sender, uint256(node), 1, "");
