@@ -20,16 +20,17 @@
 //   AWS_REGION=us-east-1                  (default; override if needed)
 
 import { execSync, spawnSync } from "node:child_process";
-import { existsSync, writeFileSync, chmodSync, mkdirSync } from "node:fs";
+import { existsSync, readFileSync, writeFileSync, chmodSync, mkdirSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 
 // ──────────────────────────────────────────────────────────────────
 //  PLACEHOLDERS — replace these with the real repo and setup command
 //  before running the live demo.
 // ──────────────────────────────────────────────────────────────────
-const REPO_URL = "https://github.com/PLACEHOLDER_OWNER/PLACEHOLDER_REPO.git";
+const REPO_URL = "https://github.com/derek2403/openclaw.git";
 const REPO_DIR = "openclaw";          // dir name under ~ to clone into
-const SETUP_CMD = "bash setup.sh";    // runs inside the cloned repo dir
+const SETUP_CMD = "bash start.sh";    // runs inside the cloned repo dir
+const ENV_PATH = resolve(".env");     // local .env to upload as ~/openclaw/.env on EC2
 
 // ──────────────────────────────────────────────────────────────────
 const REGION = process.env.AWS_REGION ?? "us-east-1";
@@ -98,6 +99,14 @@ async function waitForEnterOrTimeout() {
   console.log(`${dim}region: ${REGION} · type: ${INSTANCE_TYPE} · key: ${KEY_NAME}${reset}`);
   console.log(`${dim}repo:   ${REPO_URL}${reset}`);
   console.log(`${dim}setup:  ${SETUP_CMD}${reset}`);
+  console.log(`${dim}env:    ${ENV_PATH}${reset}`);
+
+  // 0. preflight — fail fast if .env is missing, before we provision anything
+  if (!existsSync(ENV_PATH)) {
+    fail(`.env not found at ${ENV_PATH}`);
+    info(`Create it with the openclaw secrets (bot token, 0G key) before running.`);
+    process.exit(1);
+  }
 
   // 1. identity
   step(1, "aws sts get-caller-identity");
@@ -166,32 +175,59 @@ async function waitForEnterOrTimeout() {
   await sleep(30_000);
   ok(`sshd should be reachable`);
 
-  // 7. SSH → clone repo → run setup script
-  step(7, `ssh ec2-user@${publicIp} → clone & run`);
-  const installScript = `set -e
-echo "[$(date +%H:%M:%S)] installing git…"
-sudo dnf install -y -q git 2>&1 | tail -3 || sudo yum install -y -q git 2>&1 | tail -3
-cd ~
-echo "[$(date +%H:%M:%S)] cloning ${REPO_URL}…"
-rm -rf ${REPO_DIR}
-git clone ${REPO_URL} ${REPO_DIR}
-cd ${REPO_DIR}
-echo "[$(date +%H:%M:%S)] running: ${SETUP_CMD}"
+  // 7. interactive ssh — show AL2023 banner, fake prompts, then clone + run
+  step(7, `ssh ec2-user@${publicIp} → live install in popup terminal`);
+  const envB64 = Buffer.from(readFileSync(ENV_PATH)).toString("base64");
+  const remoteScript = `set -e
+
+# Amazon Linux 2023 welcome banner
+cat /etc/motd 2>/dev/null
+echo
+echo "Connected to $(hostname) ($(hostname -I 2>/dev/null | awk '{print $1}'))"
+echo
+sleep 1
+
+USER_NAME=$(whoami)
+HOST_NAME=$(hostname -s)
+
+# Fake an interactive prompt before each command so the audience sees what's
+# being run on the EC2 box.
+say() {
+  echo
+  printf '[%s@%s ~]$ %s\\n' "$USER_NAME" "$HOST_NAME" "$1"
+  sleep 0.5
+}
+
+say "sudo dnf install -y git nodejs npm"
+sudo dnf install -y -q git nodejs npm 2>&1 | tail -5
+
+say "git clone ${REPO_URL} ~/${REPO_DIR}"
+rm -rf ~/${REPO_DIR}
+git clone ${REPO_URL} ~/${REPO_DIR}
+cd ~/${REPO_DIR}
+
+say "# loading .env from your Mac"
+echo '${envB64}' | base64 -d > .env
+chmod 600 .env
+
+say "ls -la"
+ls -la
+
+say "${SETUP_CMD}"
 ${SETUP_CMD}
-echo ""
-echo "✓ Repo cloned to ~/${REPO_DIR}"
-echo "✓ Setup complete"
 `;
 
+  const scriptB64 = Buffer.from(remoteScript).toString("base64");
   const sshArgs = [
+    "-tt",
     "-o", "StrictHostKeyChecking=no",
     "-o", "UserKnownHostsFile=/dev/null",
     "-o", "ConnectTimeout=15",
     "-i", KEY_PATH,
     `ec2-user@${publicIp}`,
-    "bash -s",
+    `printf '%s' '${scriptB64}' | base64 -d | bash`,
   ];
-  const r = spawnSync("ssh", sshArgs, { input: installScript, stdio: ["pipe", "inherit", "inherit"] });
+  const r = spawnSync("ssh", sshArgs, { stdio: "inherit" });
   if (r.status !== 0) {
     fail(`ssh exited ${r.status}`);
   } else {
