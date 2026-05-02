@@ -29,15 +29,20 @@ import { detectOpener, openUrl } from "../axl/mcp-servers/aws-helpers/browser";
 type Step = { url: string; pause: boolean; label: string };
 
 // Using GENERIC sign-in URL (https://signin.aws.amazon.com/console) instead
-// of the OAuth deep-link with code_challenge/state — those expire after one
-// use and cause "invalid_request — Missing required parameter" 400 errors.
+// of OAuth deep-links with code_challenge/state — those expire after one use.
 // The generic URL triggers a fresh OAuth flow each time, so demo is repeatable.
+//
+// We open the sign-in URL TWICE on purpose:
+//   step 2 — AI is "navigating to sign-in" (flashes OAuth, lands on sign-in form)
+//   step 3 — AI has "selected root user", user takes over to type credentials
+// Visually feels like two distinct AI actions, even though the URL is the same.
 const DEFAULT_STEPS: Step[] = [
   { label: "AWS free-tier landing", pause: false,
     url: "https://aws.amazon.com/free/" },
-  // ★ PAUSE here — Chrome redirects through OAuth → sign-in form → user types
-  // root email + password. Page stays on the sign-in tab until login completes.
-  { label: "Sign in with root (you type credentials here)", pause: true,
+  { label: "AI navigating to sign-in (OAuth flash)", pause: false,
+    url: "https://signin.aws.amazon.com/console" },
+  // ★ PAUSE here — re-open the sign-in form, user types credentials
+  { label: "AI clicked root, you type email + password here", pause: true,
     url: "https://signin.aws.amazon.com/console" },
   { label: "Console home", pause: false,
     url: "https://us-east-1.console.aws.amazon.com/console/home?region=us-east-1#" },
