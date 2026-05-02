@@ -31,13 +31,11 @@ type Step = { url: string; pause: boolean; label: string };
 const DEFAULT_STEPS: Step[] = [
   { label: "AWS free-tier landing", pause: false,
     url: "https://aws.amazon.com/free/?trk=06dd4e64-3ddf-405e-bec9-d2414185926c&sc_channel=ps&ef_id=CjwKCAjwntHPBhAaEiwA_Xp6RnY7G9dZSmhU0VN020DtbAGdylUEVlHhJo1aVZtg-qgsAyMYQNVwjRoCB7sQAvD_BwE:G:s&s_kwcid=AL!4422!3!798628412789!e!!g!!aws!23606217014!196761071947&gad_campaignid=23606217014&gbraid=0AAAAADjHtp-Y4t6OtBT9be4A-mk1PZ4NA&gclid=CjwKCAjwntHPBhAaEiwA_Xp6RnY7G9dZSmhU0VN020DtbAGdylUEVlHhJo1aVZtg-qgsAyMYQNVwjRoCB7sQAvD_BwE" },
-  { label: "Signup form", pause: false,
-    url: "https://signin.aws.amazon.com/signup?request_type=register&trk=06dd4e64-3ddf-405e-bec9-d2414185926c&sc_channel=ps" },
   { label: "Sign-in OAuth landing", pause: false,
-    url: "https://ap-southeast-2.signin.aws.amazon.com/oauth?client_id=arn%3Aaws%3Asignin%3A%3A%3Aconsole%2Fcanvas&code_challenge=zp9yZvuW7Y8NKnoaaROzZ8ew5F8PcdtJgPucPpwpK8I&code_challenge_method=SHA-256&response_type=code&redirect_uri=https%3A%2F%2Fconsole.aws.amazon.com%2Fconsole%2Fhome%3Fca-oauth-flow-id%3D29dc%26hashArgs%3D%2523%26isauthcode%3Dtrue%26oauthStart%3D1777701383684%26state%3DhashArgsFromTB_ap-southeast-2_2b6ff061c8208fa1" },
+    url: "https://ap-southeast-2.signin.aws.amazon.com/oauth?client_id=arn%3Aaws%3Asignin%3A%3A%3Aconsole%2Fcanvas&code_challenge=3TM4oFO6lpXQVGYP12pd10_ZLVk3xE7nB7Ld1DHnFOg&code_challenge_method=SHA-256&response_type=code&redirect_uri=https%3A%2F%2Fconsole.aws.amazon.com%2Fconsole%2Fhome%3Fca-oauth-flow-id%3D21d0%26hashArgs%3D%2523%26isauthcode%3Dtrue%26nc2%3Dh_si%26oauthStart%3D1777728317636%26refid%3D06dd4e64-3ddf-405e-bec9-d2414185926c%26src%3Dheader-signin%26state%3DhashArgsFromTB_ap-southeast-2_641a682ff51c84f1" },
   // ★ PAUSE here — user types email and password
-  { label: "Root email login (you type credentials here)", pause: true,
-    url: "https://signin.aws.amazon.com/signin?client_id=arn%3Aaws%3Asignin%3A%3A%3Aconsole%2Fcanvas&redirect_uri=https%3A%2F%2Fconsole.aws.amazon.com%2Fconsole%2Fhome%3Fca-oauth-flow-id%3D29dc%26hashArgs%3D%2523%26isauthcode%3Dtrue%26oauthStart%3D1777701383684%26state%3DhashArgsFromTB_ap-southeast-2_2b6ff061c8208fa1&page=resolve&code_challenge=zp9yZvuW7Y8NKnoaaROzZ8ew5F8PcdtJgPucPpwpK8I&code_challenge_method=SHA-256&backwards_compatible=true" },
+  { label: "Sign in with root (you type credentials here)", pause: true,
+    url: "https://signin.aws.amazon.com/signin?client_id=arn%3Aaws%3Asignin%3A%3A%3Aconsole%2Fcanvas&redirect_uri=https%3A%2F%2Fconsole.aws.amazon.com%2Fconsole%2Fhome%3Fca-oauth-flow-id%3D21d0%26hashArgs%3D%2523%26isauthcode%3Dtrue%26nc2%3Dh_si%26oauthStart%3D1777728317636%26refid%3D06dd4e64-3ddf-405e-bec9-d2414185926c%26src%3Dheader-signin%26state%3DhashArgsFromTB_ap-southeast-2_641a682ff51c84f1&page=resolve&code_challenge=3TM4oFO6lpXQVGYP12pd10_ZLVk3xE7nB7Ld1DHnFOg&code_challenge_method=SHA-256&backwards_compatible=true" },
   { label: "Console home", pause: false,
     url: "https://us-east-1.console.aws.amazon.com/console/home?region=us-east-1#" },
   { label: "EC2 dashboard", pause: false,
