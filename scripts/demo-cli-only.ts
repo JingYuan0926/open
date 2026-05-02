@@ -110,7 +110,30 @@ function sleep(ms: number) { return new Promise(r => setTimeout(r, ms)); }
   }
 
   console.log(`\n${green}━━ AI execution complete ━━${reset}\n`);
+
+  // Block on Enter so the popup terminal window stays open for the demo
+  // audience to read the output. Skip if stdin isn't a TTY (e.g., script
+  // piped from another process).
+  if (process.stdin.isTTY && process.env.NO_WAIT !== "1") {
+    process.stdout.write(`${yellow}Press Enter to close…${reset}`);
+    await new Promise<void>((resolve) => {
+      process.stdin.setRawMode?.(true);
+      process.stdin.resume();
+      process.stdin.once("data", () => {
+        process.stdin.setRawMode?.(false);
+        process.stdin.pause();
+        resolve();
+      });
+    });
+    console.log("");
+  }
 })().catch(err => {
   console.error(`\n${red}error:${reset} ${err instanceof Error ? err.message : String(err)}`);
+  if (process.stdin.isTTY) {
+    process.stdout.write(`${red}Error — press Enter to close…${reset}`);
+    process.stdin.setRawMode?.(true);
+    process.stdin.once("data", () => process.exit(1));
+    return;
+  }
   process.exit(1);
 });

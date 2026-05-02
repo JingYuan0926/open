@@ -64,16 +64,12 @@ function findWtExe(): string | null {
 }
 
 function spawnPopupWindowsOrWSL(): void {
-  // Note: wt.exe treats `;` as its own command separator and embedded `"`
-  // mangles its commandline parser. Bash command uses `&&` only and avoids
-  // embedded quotes — `read` alone (no -p) just waits for Enter.
+  // demo-cli-only.ts now blocks on Enter at the end — we don't need to
+  // chain `&& read` externally, which sidesteps cmd.exe's quoting issues.
   const envPrefix =
     `${process.env.MOCK ? "MOCK=1 " : ""}${process.env.KEEP ? "KEEP=1 " : ""}`;
-  const bashCmd = `${envPrefix}npm run demo:cli-only && echo && echo Press Enter to close && read`;
+  const bashCmd = `${envPrefix}npm run demo:cli-only`;
 
-  // Always use cmd.exe /c start — opens a new console window running wsl.
-  // wt.exe's argument parsing for nested commandlines is brittle, the
-  // simpler cmd-start path Just Works.
   spawn("cmd.exe", [
     "/c", "start", "AI Execution",
     "wsl.exe", "-d", WSL_DISTRO, "--cd", process.cwd(),
@@ -84,10 +80,9 @@ function spawnPopupWindowsOrWSL(): void {
 function spawnPopupMac(): void {
   const envPrefix =
     `${process.env.MOCK ? "MOCK=1 " : ""}${process.env.KEEP ? "KEEP=1 " : ""}`;
-  // AppleScript "do script" runs in a new Terminal window. Escape ' and "
-  // for AppleScript string literal.
+  // demo-cli-only.ts blocks on Enter itself — no need for trailing `&& read`.
   const cwd = process.cwd();
-  const shellCmd = `cd '${cwd.replace(/'/g, "'\\''")}' && ${envPrefix}npm run demo:cli-only && echo && echo Press Enter to close && read`;
+  const shellCmd = `cd '${cwd.replace(/'/g, "'\\''")}' && ${envPrefix}npm run demo:cli-only`;
   const escForApple = shellCmd.replace(/\\/g, "\\\\").replace(/"/g, '\\"');
   spawn("osascript", [
     "-e", `tell application "Terminal" to do script "${escForApple}"`,
