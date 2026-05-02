@@ -14,11 +14,19 @@
 
 import { detectOpener, openUrl } from "../axl/mcp-servers/aws-helpers/browser";
 
-// Default flow: AWS free-tier landing → signup page.
-// Add more URLs to walk a longer narrative (e.g. signup → console → IAM → EC2).
+// Default flow: AWS free-tier landing → signup page → sign-in page.
+// AI handles navigation; user types credentials themselves at the sign-in
+// step (auth is the user's job, not the AI's — MCP execution moat).
+//
+// Add more URLs to extend the narrative (e.g. console home → IAM → EC2).
+//
+// Note on the sign-in URL: the long OAuth one with code_challenge/state is
+// session-bound and expires. For repeat demos, swap in the generic:
+//   https://signin.aws.amazon.com/console
 const DEFAULT_URLS = [
   "https://aws.amazon.com/free/?trk=06dd4e64-3ddf-405e-bec9-d2414185926c&sc_channel=ps&ef_id=CjwKCAjwntHPBhAaEiwA_Xp6RnY7G9dZSmhU0VN020DtbAGdylUEVlHhJo1aVZtg-qgsAyMYQNVwjRoCB7sQAvD_BwE:G:s&s_kwcid=AL!4422!3!798628412789!e!!g!!aws!23606217014!196761071947&gad_campaignid=23606217014&gbraid=0AAAAADjHtp-Y4t6OtBT9be4A-mk1PZ4NA&gclid=CjwKCAjwntHPBhAaEiwA_Xp6RnY7G9dZSmhU0VN020DtbAGdylUEVlHhJo1aVZtg-qgsAyMYQNVwjRoCB7sQAvD_BwE",
   "https://signin.aws.amazon.com/signup?request_type=register&trk=06dd4e64-3ddf-405e-bec9-d2414185926c&sc_channel=ps",
+  "https://ap-southeast-2.signin.aws.amazon.com/oauth?client_id=arn%3Aaws%3Asignin%3A%3A%3Aconsole%2Fcanvas&code_challenge=zp9yZvuW7Y8NKnoaaROzZ8ew5F8PcdtJgPucPpwpK8I&code_challenge_method=SHA-256&response_type=code&redirect_uri=https%3A%2F%2Fconsole.aws.amazon.com%2Fconsole%2Fhome%3Fca-oauth-flow-id%3D29dc%26hashArgs%3D%2523%26isauthcode%3Dtrue%26oauthStart%3D1777701383684%26state%3DhashArgsFromTB_ap-southeast-2_2b6ff061c8208fa1",
 ];
 
 const cyan = "\x1b[36m";
