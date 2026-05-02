@@ -111,28 +111,44 @@ function sleep(ms: number) { return new Promise(r => setTimeout(r, ms)); }
 
   console.log(`\n${green}━━ AI execution complete ━━${reset}\n`);
 
-  // Block on Enter so the popup terminal window stays open for the demo
-  // audience to read the output. Skip if stdin isn't a TTY (e.g., script
-  // piped from another process).
-  if (process.stdin.isTTY && process.env.NO_WAIT !== "1") {
-    process.stdout.write(`${yellow}Press Enter to close…${reset}`);
-    await new Promise<void>((resolve) => {
-      process.stdin.setRawMode?.(true);
-      process.stdin.resume();
-      process.stdin.once("data", () => {
-        process.stdin.setRawMode?.(false);
-        process.stdin.pause();
-        resolve();
+  // Keep the popup terminal window open so the demo audience can read the
+  // output. Two strategies:
+  //   - If stdin is a TTY: block on Enter (interactive)
+  //   - Otherwise: sleep (non-interactive case — running under cmd→wsl→bash→npm→tsx
+  //     pipes stdin to non-TTY, so Enter detection won't work)
+  // NO_WAIT=1 skips both. CLOSE_SECS=N overrides the sleep duration.
+  if (process.env.NO_WAIT !== "1") {
+    if (process.stdin.isTTY) {
+      process.stdout.write(`${yellow}Press Enter to close…${reset}`);
+      await new Promise<void>((resolve) => {
+        process.stdin.setRawMode?.(true);
+        process.stdin.resume();
+        process.stdin.once("data", () => {
+          process.stdin.setRawMode?.(false);
+          process.stdin.pause();
+          resolve();
+        });
       });
-    });
-    console.log("");
+      console.log("");
+    } else {
+      const secs = parseInt(process.env.CLOSE_SECS ?? "120", 10);
+      console.log(`${yellow}(window will close in ${secs}s — Ctrl+C to close sooner, CLOSE_SECS to change)${reset}`);
+      await sleep(secs * 1000);
+    }
   }
 })().catch(err => {
   console.error(`\n${red}error:${reset} ${err instanceof Error ? err.message : String(err)}`);
-  if (process.stdin.isTTY) {
-    process.stdout.write(`${red}Error — press Enter to close…${reset}`);
-    process.stdin.setRawMode?.(true);
-    process.stdin.once("data", () => process.exit(1));
+  // Keep window open on error so user can read the error.
+  if (process.env.NO_WAIT !== "1") {
+    if (process.stdin.isTTY) {
+      process.stdout.write(`${red}Error — press Enter to close…${reset}`);
+      process.stdin.setRawMode?.(true);
+      process.stdin.once("data", () => process.exit(1));
+      return;
+    }
+    const secs = parseInt(process.env.CLOSE_SECS ?? "120", 10);
+    console.error(`${red}(window will close in ${secs}s)${reset}`);
+    setTimeout(() => process.exit(1), secs * 1000);
     return;
   }
   process.exit(1);
