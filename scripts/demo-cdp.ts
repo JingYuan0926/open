@@ -58,6 +58,60 @@ async function waitForEnter(prompt: string): Promise<void> {
   console.log("");
 }
 
+// Poll Chrome's URL until it changes to a logged-in console URL.
+// Sign-in completion = URL leaves signin.aws.amazon.com → console.aws.amazon.com.
+// Fast-path: if user wants to skip waiting they can press Enter.
+async function waitForSignIn(cdp: import("./cdp-helper").CDPSession, timeoutMs = 5 * 60 * 1000): Promise<void> {
+  const start = Date.now();
+  let lastLogged = "";
+
+  // Listen for keypress so user can manually skip if needed
+  let manuallySkipped = false;
+  if (process.stdin.isTTY) {
+    process.stdin.setRawMode?.(true);
+    process.stdin.resume();
+    process.stdin.on("data", (data) => {
+      const buf = data as Buffer;
+      if (buf[0] === 13 || buf[0] === 10) manuallySkipped = true; // Enter
+      if (buf[0] === 3) process.exit(0); // Ctrl+C
+    });
+  }
+
+  process.stdout.write(`${yellow}  watching browser URL — auto-continues when you sign in (or press Enter to skip)…${reset}\n`);
+
+  while (Date.now() - start < timeoutMs) {
+    if (manuallySkipped) {
+      console.log(`  ${green}→ skipped${reset}`);
+      break;
+    }
+    let url = "";
+    try {
+      url = await cdp.getCurrentUrl();
+    } catch {
+      // CDP can hiccup during navigation — retry next tick
+    }
+    if (url && url !== lastLogged) {
+      console.log(`  ${dim}URL: ${url.slice(0, 100)}${url.length > 100 ? "…" : ""}${reset}`);
+      lastLogged = url;
+    }
+    // Detect: URL contains console.aws.amazon.com but NOT signin.aws.amazon.com
+    if (
+      url.includes("console.aws.amazon.com") &&
+      !url.includes("signin.aws.amazon.com")
+    ) {
+      console.log(`  ${green}✓ signed in — auto-advancing${reset}`);
+      break;
+    }
+    await sleep(500);
+  }
+
+  if (process.stdin.isTTY) {
+    process.stdin.setRawMode?.(false);
+    process.stdin.pause();
+    process.stdin.removeAllListeners("data");
+  }
+}
+
 const TOTAL = 6;
 
 (async () => {
@@ -98,9 +152,9 @@ const TOTAL = 6;
     }
   }
 
-  // ─── 4. PAUSE for credentials
-  step(4, TOTAL, "you: type root email + password, sign in");
-  await waitForEnter(`Sign in to AWS in Chrome, then press Enter here → continue`);
+  // ─── 4. Wait for user to sign in — auto-detected via URL polling
+  step(4, TOTAL, "you: type root email + password — script auto-detects when you're in");
+  await waitForSignIn(cdp);
 
   // ─── 5. Console home
   step(5, TOTAL, "AI: navigate to EC2 dashboard");
