@@ -18,7 +18,9 @@
     "mcp:demo:install": "bash scripts/mcp-demo.sh install",
     "test:aws": "tsx scripts/test-aws-direct.ts",
     "test:browser": "tsx scripts/test-browser.ts",
-    "demo:full": "tsx scripts/demo-full.ts"
+    "demo:full": "tsx scripts/demo-full.ts",
+    "demo:popup": "tsx scripts/demo-popup.ts",
+    "demo:cli-only": "tsx scripts/demo-cli-only.ts"
   },
   "dependencies": {
     "@0gfoundation/0g-ts-sdk": "^1.2.6",
