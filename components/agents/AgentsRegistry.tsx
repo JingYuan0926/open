@@ -12,6 +12,7 @@ import {
   useAllSpecialists,
   type AnySpecialist,
 } from "@/lib/ens/SpecialistRegistrar";
+import { usePayAgent, type PayStep } from "@/lib/x402/payAgent";
 
 function shortAddr(a: string) {
   return `${a.slice(0, 6)}…${a.slice(-4)}`;
@@ -26,6 +27,113 @@ function Stat({ label, value }: { label: string; value: React.ReactNode }) {
       <div className="text-[12.5px] font-medium tabular-nums text-ink mt-0.5 truncate">
         {value}
       </div>
+    </div>
+  );
+}
+
+function PayBadge({ step }: { step: PayStep }) {
+  if (step === "requesting")
+    return (
+      <Badge variant="info" dot>
+        requesting 402
+      </Badge>
+    );
+  if (step === "got-402")
+    return (
+      <Badge variant="info" dot>
+        authorizing X-PAYMENT
+      </Badge>
+    );
+  if (step === "paying")
+    return (
+      <Badge variant="info" dot>
+        broadcasting on 0G…
+      </Badge>
+    );
+  if (step === "success")
+    return (
+      <Badge variant="success" dot>
+        paid
+      </Badge>
+    );
+  if (step === "error")
+    return (
+      <Badge variant="danger" dot>
+        failed
+      </Badge>
+    );
+  return null;
+}
+
+function PayAgentControl({
+  agentName,
+  ownerAddress,
+  priceOG,
+}: {
+  agentName: string;
+  ownerAddress: string;
+  priceOG: string;
+}) {
+  const { step, error, result, pay, reset, isBusy } = usePayAgent();
+  const canPay = Boolean(priceOG) && Number(priceOG) > 0;
+
+  return (
+    <div className="mt-3 pt-3 border-t border-border space-y-2">
+      <div className="flex items-center gap-2 flex-wrap">
+        <Button
+          variant="primary"
+          size="sm"
+          icon="cube"
+          disabled={!canPay || isBusy}
+          onClick={() =>
+            pay({ agentName, ownerAddress, priceOG })
+          }
+        >
+          {isBusy
+            ? "Paying…"
+            : canPay
+              ? `Pay ${priceOG} 0G via x402`
+              : "No price set"}
+        </Button>
+        <PayBadge step={step} />
+        {step !== "idle" && step !== "paying" && step !== "requesting" && (
+          <button
+            type="button"
+            onClick={reset}
+            className="text-[11.5px] text-ink-3 hover:text-ink underline"
+          >
+            reset
+          </button>
+        )}
+      </div>
+
+      {step === "got-402" && (
+        <div className="text-[11px] text-ink-3 font-mono leading-relaxed">
+          ← 402 Payment Required · resubmitting with X-PAYMENT header…
+        </div>
+      )}
+
+      {step === "success" && result && (
+        <div className="text-[11.5px] text-ink-2 leading-relaxed">
+          Sent <span className="font-mono">{result.amount} 0G</span> to{" "}
+          <span className="font-mono">{shortAddr(result.payTo)}</span>{" "}
+          on {result.network}.{" "}
+          <a
+            href={result.explorerUrl}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="text-blue-700 underline font-mono break-all"
+          >
+            {result.txHash.slice(0, 10)}…{result.txHash.slice(-8)}
+          </a>
+        </div>
+      )}
+
+      {step === "error" && error && (
+        <div className="text-[11.5px] text-red-700 leading-relaxed break-words">
+          {error}
+        </div>
+      )}
     </div>
   );
 }
@@ -126,6 +234,12 @@ function AgentListItem({
           ENS records
         </a>
       </div>
+
+      <PayAgentControl
+        agentName={s.fullName}
+        ownerAddress={s.owner}
+        priceOG={s.records.price}
+      />
     </Card>
   );
 }
@@ -195,6 +309,16 @@ export function AgentsRegistry() {
         Reads from <span className="font-mono">SpecialistRegistrar.getAll()</span>{" "}
         on Sepolia, then batches the six text records per node through
         Multicall3.
+      </div>
+      <div className="text-[11.5px] text-ink-3 mt-1.5 flex items-center gap-1.5">
+        <Icon name="cube" size={12} />
+        Pay buttons follow the{" "}
+        <span className="font-mono">x402</span> protocol — first request
+        receives <span className="font-mono">HTTP 402</span> with payment
+        requirements, second request submits an{" "}
+        <span className="font-mono">X-PAYMENT</span> header. The server uses{" "}
+        <span className="font-mono">0G_PRIVATE_KEY</span> to push native 0G
+        on Galileo (chainId 16602).
       </div>
     </div>
   );
