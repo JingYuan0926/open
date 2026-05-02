@@ -47,8 +47,9 @@ async function waitForEnter(prompt: string): Promise<void> {
   step(1, 2, "AWS free-tier landing");
   await openUrl("https://aws.amazon.com/free/");
   ok("opened");
-  info(`auto-advancing in ${DELAY_MS}ms…`);
-  await sleep(DELAY_MS);
+  // Landing page loads fast — 2s is enough before next URL.
+  info(`auto-advancing in 2s…`);
+  await sleep(2000);
 
   step(2, 2, "Sign in (Chrome redirects through OAuth → sign-in form)");
   await openUrl("https://signin.aws.amazon.com/console");
