@@ -1,21 +1,21 @@
-// scripts/demo-before.ts — pre-login portion of the demo.
+// scripts/demo-before.ts — pre-login portion of the demo (simple URL opens).
 //
-// AI: navigate landing → sign-in URL → click 'Sign in using root user email'.
-// You: type root email + password in Chrome.
-// Script: auto-detects sign-in completion and exits cleanly.
+// Uses your default Chrome (cmd.exe / open / xdg-open) — no debug port,
+// no CDP, no chrome:debug setup needed.
 //
-// Run: npm run demo:before
-// Then sign in. When you see the script say "✓ signed in", run:
-//        npm run demo:after
+// Flow:
+//   1. AWS free-tier landing               [auto, 7s]
+//   2. Sign-in page (you sign in here)     [WAIT, press Enter when logged in]
+//
+// Then run: npm run demo:after
 
-import { CDPSession } from "./cdp-helper";
+import { openUrl } from "../axl/mcp-servers/aws-helpers/browser";
 
-const DELAY_MS = parseInt(process.env.DELAY_MS ?? "5000", 10);
+const DELAY_MS = parseInt(process.env.DELAY_MS ?? "7000", 10);
 
 const cyan = "\x1b[36m";
 const yellow = "\x1b[1;33m";
 const green = "\x1b[32m";
-const red = "\x1b[31m";
 const dim = "\x1b[2m";
 const reset = "\x1b[0m";
 
@@ -24,87 +24,41 @@ function ok(msg: string)   { console.log(`${green}  ✓${reset} ${msg}`); }
 function info(msg: string) { console.log(`${dim}  ${msg}${reset}`); }
 function sleep(ms: number) { return new Promise(r => setTimeout(r, ms)); }
 
-async function waitForSignIn(cdp: CDPSession, timeoutMs = 5 * 60 * 1000): Promise<void> {
-  const start = Date.now();
-  let lastLogged = "";
-
-  let manuallySkipped = false;
-  if (process.stdin.isTTY) {
+async function waitForEnter(prompt: string): Promise<void> {
+  if (!process.stdin.isTTY) { await sleep(DELAY_MS); return; }
+  process.stdout.write(`${yellow}  ${prompt}${reset}`);
+  await new Promise<void>((resolve) => {
     process.stdin.setRawMode?.(true);
     process.stdin.resume();
-    process.stdin.on("data", (data) => {
+    process.stdin.once("data", (data) => {
+      process.stdin.setRawMode?.(false);
+      process.stdin.pause();
       const buf = data as Buffer;
-      if (buf[0] === 13 || buf[0] === 10) manuallySkipped = true;
       if (buf[0] === 3) process.exit(0);
+      resolve();
     });
-  }
-
-  process.stdout.write(`${yellow}  watching browser URL — auto-continues when you sign in (Enter to skip)…${reset}\n`);
-
-  while (Date.now() - start < timeoutMs) {
-    if (manuallySkipped) { console.log(`  ${green}→ skipped${reset}`); break; }
-    let url = "";
-    try { url = await cdp.getCurrentUrl(); } catch {}
-    if (url && url !== lastLogged) {
-      console.log(`  ${dim}URL: ${url.slice(0, 100)}${url.length > 100 ? "…" : ""}${reset}`);
-      lastLogged = url;
-    }
-    if (url.includes("console.aws.amazon.com") && !url.includes("signin.aws.amazon.com")) {
-      console.log(`  ${green}✓ signed in — pre-login flow done${reset}`);
-      break;
-    }
-    await sleep(500);
-  }
-
-  if (process.stdin.isTTY) {
-    process.stdin.setRawMode?.(false);
-    process.stdin.pause();
-    process.stdin.removeAllListeners("data");
-  }
+  });
+  console.log("");
 }
-
-const TOTAL = 4;
 
 (async () => {
   console.log(`${cyan}━━ demo:before — pre-login flow ━━${reset}`);
-  info("connecting to debug Chrome at localhost:9222 …");
 
-  let cdp: CDPSession;
-  try {
-    cdp = await CDPSession.connect(9222);
-    ok("connected");
-  } catch (err) {
-    console.log(`${red}  ✗${reset} couldn't connect: ${err instanceof Error ? err.message : String(err)}`);
-    info("Run 'npm run chrome:debug' first.");
-    process.exit(1);
-  }
+  step(1, 2, "AWS free-tier landing");
+  await openUrl("https://aws.amazon.com/free/");
+  ok("opened");
+  info(`auto-advancing in ${DELAY_MS}ms…`);
+  await sleep(DELAY_MS);
 
-  step(1, TOTAL, "AI: navigate to AWS free-tier landing");
-  await cdp.navigate("https://aws.amazon.com/free/", DELAY_MS);
-  ok("page loaded");
+  step(2, 2, "Sign in (Chrome redirects through OAuth → sign-in form)");
+  await openUrl("https://signin.aws.amazon.com/console");
+  ok("opened — sign in to AWS in Chrome");
 
-  step(2, TOTAL, "AI: click Sign In to Console");
-  await cdp.navigate("https://signin.aws.amazon.com/console", DELAY_MS);
-  ok("on sign-in page");
-
-  step(3, TOTAL, "AI: click 'Sign in using root user email'");
-  const btnSelector = "#root_account_signin, [data-testid='not-sign-in-with-iam']";
-  if (!(await cdp.waitForSelector(btnSelector, 8000))) {
-    info("root-user button didn't appear in time. Click it manually if visible.");
-  } else {
-    if (await cdp.click(btnSelector)) {
-      ok("clicked root-user button");
-      await sleep(1500);
-    }
-  }
-
-  step(4, TOTAL, "you: type root email + password — script auto-detects when you're in");
-  await waitForSignIn(cdp);
+  await waitForEnter(`Press Enter once you're signed in → demo:before exits cleanly`);
 
   console.log(`\n${green}━━ pre-login done ━━${reset}`);
   info("Now run: npm run demo:after");
-  cdp.close();
 })().catch((err) => {
-  console.error(`\n${red}error:${reset} ${err instanceof Error ? err.message : String(err)}`);
+  console.error(`error: ${err instanceof Error ? err.message : String(err)}`);
   process.exit(1);
 });

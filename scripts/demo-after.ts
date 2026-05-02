@@ -1,69 +1,52 @@
-// scripts/demo-after.ts — post-login portion of the demo.
+// scripts/demo-after.ts — post-login portion of the demo (simple URL opens).
 //
-// Assumes you're already signed in to AWS in the debug Chrome (run
-// 'npm run demo:before' first, sign in there).
+// Assumes you're already signed in to AWS in your default Chrome.
+// Opens 3 console pages in sequence.
 //
-// AI: navigate console → EC2 dashboard → launch wizard.
-// Then SDK takes over — the actual EC2 launch is via 'npm run test:aws launch'.
+// Flow:
+//   1. Console home          [auto, 7s]
+//   2. EC2 dashboard         [auto, 7s]
+//   3. Launch wizard         [done — SDK takes over from here]
 //
-// Run: npm run demo:after
+// Then run: npm run test:aws launch    (or npm run demo:cli-only)
 
-import { CDPSession } from "./cdp-helper";
+import { openUrl } from "../axl/mcp-servers/aws-helpers/browser";
 
-const DELAY_MS = parseInt(process.env.DELAY_MS ?? "5000", 10);
+const DELAY_MS = parseInt(process.env.DELAY_MS ?? "7000", 10);
 
 const cyan = "\x1b[36m";
 const yellow = "\x1b[1;33m";
 const green = "\x1b[32m";
-const red = "\x1b[31m";
 const dim = "\x1b[2m";
 const reset = "\x1b[0m";
 
 function step(n: number, total: number, msg: string) { console.log(`\n${cyan}━━ step ${n}/${total} ${reset}${yellow}${msg}${reset}`); }
 function ok(msg: string)   { console.log(`${green}  ✓${reset} ${msg}`); }
 function info(msg: string) { console.log(`${dim}  ${msg}${reset}`); }
-
-const TOTAL = 3;
+function sleep(ms: number) { return new Promise(r => setTimeout(r, ms)); }
 
 (async () => {
   console.log(`${cyan}━━ demo:after — post-login flow ━━${reset}`);
-  info("connecting to debug Chrome at localhost:9222 …");
 
-  let cdp: CDPSession;
-  try {
-    cdp = await CDPSession.connect(9222);
-    ok("connected");
-  } catch (err) {
-    console.log(`${red}  ✗${reset} couldn't connect: ${err instanceof Error ? err.message : String(err)}`);
-    info("Run 'npm run chrome:debug' first.");
-    process.exit(1);
-  }
+  step(1, 3, "Console home");
+  await openUrl("https://us-east-1.console.aws.amazon.com/console/home?region=us-east-1#");
+  ok("opened");
+  await sleep(DELAY_MS);
 
-  // Sanity: warn if user isn't signed in
-  const url = await cdp.getCurrentUrl();
-  if (url.includes("signin.aws.amazon.com")) {
-    console.log(`${red}  ✗${reset} you're still on the sign-in page. Run 'npm run demo:before' first and sign in.`);
-    process.exit(1);
-  }
+  step(2, 3, "EC2 dashboard");
+  await openUrl("https://us-east-1.console.aws.amazon.com/ec2/home?region=us-east-1#Home:");
+  ok("opened");
+  await sleep(DELAY_MS);
 
-  step(1, TOTAL, "AI: navigate to console home");
-  await cdp.navigate("https://us-east-1.console.aws.amazon.com/console/home?region=us-east-1#", DELAY_MS);
-  ok("on console home");
-
-  step(2, TOTAL, "AI: navigate to EC2 dashboard");
-  await cdp.navigate("https://us-east-1.console.aws.amazon.com/ec2/home?region=us-east-1#Home:", DELAY_MS);
-  ok("on EC2 dashboard");
-
-  step(3, TOTAL, "AI: navigate to launch wizard");
-  await cdp.navigate("https://us-east-1.console.aws.amazon.com/ec2/home?region=us-east-1#LaunchInstances:", DELAY_MS);
-  ok("on launch wizard — ready for SDK takeover");
+  step(3, 3, "Launch wizard");
+  await openUrl("https://us-east-1.console.aws.amazon.com/ec2/home?region=us-east-1#LaunchInstances:");
+  ok("opened — ready for SDK takeover");
 
   console.log(`\n${green}━━ post-login done ━━${reset}`);
   info("Next: SDK does the actual EC2 launch + SSH install. Run:");
   info("  npm run test:aws launch       (then test:aws install <id> <ip>)");
   info("  or: npm run demo:cli-only     (full launch + install + terminate)");
-  cdp.close();
 })().catch((err) => {
-  console.error(`\n${red}error:${reset} ${err instanceof Error ? err.message : String(err)}`);
+  console.error(`error: ${err instanceof Error ? err.message : String(err)}`);
   process.exit(1);
 });
