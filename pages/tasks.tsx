@@ -15,7 +15,7 @@ import {
     useWithdrawable,
     type Task,
     type TaskWithSpecialists,
-} from "@/lib/tasks/useTaskMarket";
+} from "@/lib/ens/TaskMarket";
 
 const geistSans = Geist({ variable: "--font-geist-sans", subsets: ["latin"] });
 const geistMono = Geist_Mono({ variable: "--font-geist-mono", subsets: ["latin"] });
