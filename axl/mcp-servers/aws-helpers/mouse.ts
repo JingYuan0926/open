@@ -37,8 +37,10 @@ function powershellPath(): string {
 }
 
 export interface MouseMoveOptions {
-  fromX: number;
-  fromY: number;
+  // Omit fromX/fromY to start the glide from the cursor's current position
+  // (no teleport). Pass them explicitly only if you want a fixed start.
+  fromX?: number;
+  fromY?: number;
   toX: number;
   toY: number;
   durationMs?: number;
@@ -60,11 +62,11 @@ export async function moveMouse(opts: MouseMoveOptions): Promise<void> {
     "-NoProfile",
     "-ExecutionPolicy", "Bypass",
     "-File", powershellPath(),
-    "-FromX", String(opts.fromX),
-    "-FromY", String(opts.fromY),
     "-ToX", String(opts.toX),
     "-ToY", String(opts.toY),
     "-DurationMs", String(opts.durationMs ?? 1200),
+    ...(opts.fromX !== undefined ? ["-FromX", String(opts.fromX)] : []),
+    ...(opts.fromY !== undefined ? ["-FromY", String(opts.fromY)] : []),
     ...(opts.click ? ["-Click"] : []),
   ];
 
@@ -79,6 +81,23 @@ export async function moveMouse(opts: MouseMoveOptions): Promise<void> {
 }
 
 export interface ScreenSize { width: number; height: number; }
+
+export interface CursorPosition { x: number; y: number; }
+
+export function getCursorPosition(): CursorPosition {
+  if (platform() !== "win32" && !isWSL()) {
+    return { x: 0, y: 0 };
+  }
+  const result = spawnSync("powershell.exe", [
+    "-NoProfile",
+    "-Command",
+    'Add-Type -AssemblyName System.Windows.Forms; $p = [System.Windows.Forms.Cursor]::Position; Write-Host ("{0},{1}" -f $p.X, $p.Y)',
+  ]);
+  const out = result.stdout?.toString().trim() ?? "";
+  const m = out.match(/(\d+),(\d+)/);
+  if (!m) return { x: 0, y: 0 };
+  return { x: parseInt(m[1], 10), y: parseInt(m[2], 10) };
+}
 
 export async function getScreenSize(): Promise<ScreenSize> {
   if (platform() !== "win32" && !isWSL()) {

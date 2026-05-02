@@ -12,8 +12,8 @@
 # Use `[System.Windows.Forms.Screen]::PrimaryScreen.Bounds` to discover.
 
 param(
-  [Parameter(Mandatory=$true)] [int]$FromX,
-  [Parameter(Mandatory=$true)] [int]$FromY,
+  [int]$FromX = -1,
+  [int]$FromY = -1,
   [Parameter(Mandatory=$true)] [int]$ToX,
   [Parameter(Mandatory=$true)] [int]$ToY,
   [int]$DurationMs = 1200,
@@ -23,6 +23,14 @@ param(
 
 Add-Type -AssemblyName System.Windows.Forms
 Add-Type -AssemblyName System.Drawing
+
+# Default From{X,Y} to current cursor position so the glide doesn't "teleport"
+# the cursor to a fixed start before animating.
+if ($FromX -lt 0 -or $FromY -lt 0) {
+  $current = [System.Windows.Forms.Cursor]::Position
+  if ($FromX -lt 0) { $FromX = $current.X }
+  if ($FromY -lt 0) { $FromY = $current.Y }
+}
 
 $delayMs = [int]($DurationMs / $Steps)
 

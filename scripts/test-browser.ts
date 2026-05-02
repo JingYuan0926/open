@@ -59,14 +59,17 @@ const skipMouse = process.env.NO_MOUSE === "1";
   // ─────────────────────────────────────────────
   if (!skipMouse) {
     console.log(`${yellow}step 2${reset}: AI-like cursor glide → signup button area`);
-    // Roughly: start lower-left of viewport, end upper-right where AWS's
-    // "Create a Free Account" CTA usually sits. Adjust if your viewport differs.
-    const fromX = Math.round(screen.width * 0.15);
-    const fromY = Math.round(screen.height * 0.7);
-    const toX   = Math.round(screen.width * 0.78);
-    const toY   = Math.round(screen.height * 0.28);
-    console.log(`${dim}  glide: (${fromX},${fromY}) → (${toX},${toY}) over 1.5s${reset}`);
-    await moveMouse({ fromX, fromY, toX, toY, durationMs: 1500 });
+    // Default: end at upper-right where the AWS "Create a Free Account" CTA
+    // sits on a 1536x864 layout. Override with MOUSE_TO_X / MOUSE_TO_Y env vars
+    // (use `npm run mouse:where` to find the right values for your screen).
+    const toX = process.env.MOUSE_TO_X ? parseInt(process.env.MOUSE_TO_X, 10)
+      : Math.round(screen.width * 0.78);
+    const toY = process.env.MOUSE_TO_Y ? parseInt(process.env.MOUSE_TO_Y, 10)
+      : Math.round(screen.height * 0.28);
+    // Don't pass fromX/fromY — script reads current cursor position so the
+    // glide starts naturally from wherever the cursor is now (no teleport).
+    console.log(`${dim}  glide: <current pos> → (${toX},${toY}) over 1.5s${reset}`);
+    await moveMouse({ toX, toY, durationMs: 1500 });
     console.log(`${green}  ✓ glided${reset}`);
     console.log(`${dim}  hover 1s…${reset}`);
     await new Promise(r => setTimeout(r, 1000));
