@@ -16,27 +16,45 @@ The subname carries six text records on the public resolver:
 
 Network: **Sepolia**. Parent: **`righthand.eth`** (wrapped in NameWrapper, owned by `0x7dEC10140F6a10DBDC0b9b4d8ba4D468B1B8E6E6`).
 
+The production publish flow on `/host` populates two of these records automatically: `0g_token_id` from the iNFT minted just-in-time on 0G Galileo, and `0g_workspace_uri` from that iNFT's chainscan URL (`https://chainscan-galileo.0g.ai/nft/<contract>/<tokenId>`). The `/ens-test` page is the bare-wallet harness that lets you write whatever you like into all six.
+
 ## On-chain components
 
 | contract                | address (Sepolia)                              | role                                                      |
 |-------------------------|------------------------------------------------|-----------------------------------------------------------|
 | ENS NameWrapper         | `0x0635513f179D50A207757E05759CbD106d7dFcE8`   | wraps ENS names as ERC-1155, mints subnames               |
 | ENS Public Resolver     | `0xE99638b40E4Fff0129D56f03b55b6bbC4BBE49b5`   | stores `text(node, key)` records                          |
-| `SpecialistRegistrar`   | `0x03e69a73090A7E8392bC54BC24316a326020B128`   | one-tx subname mint + records + transfer to caller       |
+| `SpecialistRegistrar` (v2) | `0xE8E40daf718010e3B5d07cd4A0b22333757D77Dd` | one-tx subname mint + records + transfer to caller; on-chain `getOwned(address)` mapping |
 
-The parent owner has called `NameWrapper.setApprovalForAll(SpecialistRegistrar, true)`, so the registrar can mint subnames of `righthand.eth` on anyone's behalf. If you redeploy the contract you must re-run that approval (see `contracts/scripts/approve-registrar.ts`).
+Plus on **0G Galileo testnet (chainId 16602)**:
 
-## Two registration paths
+| contract           | address (0G Galileo)                           | role                                            |
+|--------------------|------------------------------------------------|-------------------------------------------------|
+| `SPARKiNFT`        | `0xe457A01ce326977Ed7A56a02a9cA8a9C4468074A`   | ERC-721 iNFT minted before each ENS register   |
 
-The page `/ens-test` exposes both via a "Signer" radio. They share the records form and the read panel.
+The parent owner has called `NameWrapper.setApprovalForAll(SpecialistRegistrar, true)` against the v2 contract, so the registrar can mint subnames of `righthand.eth` on anyone's behalf. If you redeploy the contract you must re-run that approval (see `contracts/scripts/approve-registrar.ts`). The previous v1 deployment at `0x03e6…0B128` is still approved by the parent owner — older subnames registered through it still work, they're just not visible to v2's `getOwned` view.
 
-### A. Frontend wallet via `SpecialistRegistrar` (default)
+## Registration paths
+
+Three flows exist, in increasing order of "how the product is meant to be used":
+
+### A. Frontend wallet via `SpecialistRegistrar` (the dev harness — `/ens-test`)
 
 - Any connected wallet calls `register(label, records)` on the registrar.
-- The contract `setSubnodeRecord(parent, label, address(this), resolver, 0, 0, parentExpiry)`, then 6× `setText`, then `safeTransferFrom(this, msg.sender, …)`. **One signature, one tx, caller pays gas, caller becomes owner.**
+- The contract `setSubnodeRecord(parent, label, address(this), resolver, 0, 0, parentExpiry)`, then 6× `setText`, then `safeTransferFrom(this, msg.sender, …)`, then pushes the registration into `_ownedByCaller[msg.sender]`. **One signature, one tx, caller pays gas, caller becomes owner.**
 - Hooks live in [`lib/ens/SpecialistRegistrar.ts`](lib/ens/SpecialistRegistrar.ts):
   - `useRegisterSpecialist` — `useWriteContract` + `useWaitForTransactionReceipt`. Step machine: `idle → registering → confirming → success | error`.
   - `useParentStatus` — reads `isWrapped`, `ownerOf`, and `isApprovedForAll(parentOwner, SPECIALIST_REGISTRAR_ADDRESS)`. `canRegister` is true iff parent is wrapped AND registrar is approved.
+  - `useMySpecialists` — calls v2's `getOwned(address)` for the connected wallet, then batches the six `text(node, key)` reads through Multicall3. Drives the "Your specialists" grid in the host dashboard. Wrapped in `useQuery` with a 30 s `staleTime`.
+
+### A2. Production publish — iNFT-then-ENS (the host dashboard — `/host`)
+
+The [`AgentBuilderForm`](components/host/AgentBuilderForm.tsx) on `/host` is the canonical "publish a new specialist" UI. It runs **a server-side iNFT mint first, then the wallet's ENS register** so the user signs only once (Sepolia):
+
+1. **Mint iNFT** (server-signed). POST `/api/0g/mint-inft` with `{ to: connectedAddress, botId: slug, domainTags: skill, serviceOfferings: desc }`. The server signs `SPARKiNFT.mintAgent(...)` on 0G Galileo with `0G_PRIVATE_KEY` and returns `{ tokenId, txHash }`. This works because `mintAgent` has no auth modifier; user pays no 0G gas and never switches chain.
+2. **Register ENS** (user signs). The form then calls `useRegisterSpecialist().register(slug, { …, tokenId, workspaceUri: inftUrl(tokenId) })` where `inftUrl(id) = "https://chainscan-galileo.0g.ai/nft/" + SPARKINFT_ADDRESS + "/" + id`. The user's wallet signs the Sepolia tx, the contract pushes into `_ownedByCaller[msg.sender]`, and `useMySpecialists` picks it up on the next read.
+
+Card-header badge tracks the combined state: `Draft → Minting iNFT → Awaiting signature → Confirming → Registered` (or `Failed`). There is no `0g_token_id` input field — it is derived from the mint's receipt event.
 
 ### B. Server private-key flow (legacy, still wired)
 
@@ -55,28 +73,38 @@ The page `/ens-test` exposes both via a "Signer" radio. They share the records f
 
 ```
 contracts/
-  contracts/SpecialistRegistrar.sol          # one-tx registrar, ERC1155Receiver
+  contracts/SpecialistRegistrar.sol          # one-tx registrar, ERC1155Receiver,
+                                             # _ownedByCaller mapping + getOwned/ownedCount views
   ignition/modules/SpecialistRegistrar.ts    # Ignition deploy module
   scripts/approve-registrar.ts               # parent owner → setApprovalForAll
 lib/
   networkConfig.ts                           # chains + ENS addresses + parent domain
+  sparkinft-abi.ts                           # SPARKINFT_ADDRESS (0G Galileo) + ABI
   abis/
     NameWrapper.ts                           # subset: setSubnodeRecord, ownerOf, isWrapped, set/isApprovedForAll
     PublicResolver.ts                        # subset: setText, text, multicall
-    SpecialistRegistrar.ts                   # register(label, Records), parentNode, event
+    SpecialistRegistrar.ts                   # register, getOwned, ownedCount, parentNode, event
   ens-registry.ts                            # server reads + private-key writes + shared encoders
   ens/
-    SpecialistRegistrar.ts                   # wagmi hooks: useParentStatus + useRegisterSpecialist
+    SpecialistRegistrar.ts                   # wagmi hooks: useParentStatus + useRegisterSpecialist + useMySpecialists
   providers.tsx                              # RainbowKit + wagmi + react-query wrapper
 components/
   Navbar.tsx                                 # ConnectButton.Custom with useEnsName/useEnsAvatar
+  layout/
+    HostDashboard.tsx                        # /host overview — uses useMySpecialists for "Your specialists" grid
+    TopBar.tsx                               # has a compact RainbowKit ConnectButton (replaces old static pill)
+  host/
+    AgentBuilderForm.tsx                     # production publish UI: server-mint iNFT → wallet ENS register
 pages/
   _app.tsx                                   # wraps Component in <Providers>
-  ens-test.tsx                               # mode toggle + register form + read form
+  ens-test.tsx                               # bare-wallet harness: mode toggle + register form + read form
+  host.tsx                                   # AppShell + HostDashboard
   api/ens/
     status.ts                                # server-mode registrar status
     register-specialist.ts                   # server-mode write (private key)
     read-specialist.ts                       # public read (no key)
+  api/0g/
+    mint-inft.ts                             # server-side mintAgent on 0G Galileo (uses 0G_PRIVATE_KEY)
 ```
 
 ## Required environment (`.env.local`)
@@ -87,6 +115,7 @@ pages/
 | `NEXT_PUBLIC_SEPOLIA_RPC_URL`         | client (wagmi)       | wallet transport / wagmi reads                           |
 | `NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID`| client               | optional; injected wallets work without it               |
 | `ENS_REGISTRAR_PRIVATE_KEY`           | server only          | required for server-mode signing; not used by wallet mode |
+| `0G_PRIVATE_KEY`                      | server only          | signs `SPARKiNFT.mintAgent` on 0G Galileo for `/api/0g/mint-inft` (and the rest of `pages/api/0g/*`). Square-bracket env access only — name starts with a digit |
 | `SEPOLIA_RPC_URL`                     | server fallback      | used by `lib/ens-registry.ts` viem `publicClient`        |
 | `ENS_PARENT_DOMAIN`                   | server fallback      | only consulted if `NEXT_PUBLIC_ENS_PARENT_DOMAIN` unset  |
 
@@ -96,15 +125,16 @@ For the contracts package, `contracts/.env` needs `SEPOLIA_RPC_URL` and `SEPOLIA
 
 ## Redeploy procedure
 
-The contract is approved on NameWrapper by address. If you redeploy, the previous approval is meaningless — the new contract instance must be re-approved.
+The contract is approved on NameWrapper by address. If you redeploy, the previous approval is meaningless — the new contract instance must be re-approved. Ignition keeps a per-deployment journal under `contracts/ignition/deployments/chain-11155111/`, so always pass a fresh `--deployment-id` or it'll think the existing artifact is still current and skip the deploy.
 
 1. Edit the contract.
 2. Compile: `cd contracts && ./node_modules/.bin/hardhat compile`.
-3. Compute parentNode: `node -e "import('viem').then(v=>console.log(v.namehash('righthand.eth')))"`.
+3. Compute parentNode: `node -e "import('viem').then(v=>console.log(v.namehash('righthand.eth')))"`. For `righthand.eth` it's `0xfecdb4e9ca322d8347b5f7d2d7e087c7ff92e026e4b1b8e15aaa23e71af7f4f4`.
 4. Deploy:
    ```bash
    yes | ./node_modules/.bin/hardhat ignition deploy ignition/modules/SpecialistRegistrar.ts \
      --network sepolia \
+     --deployment-id specialist-registrar-vN \
      --parameters '{"SpecialistRegistrarModule":{"parentNode":"0x..."}}'
    ```
 5. Approve from parent owner: `set -a && source .env && set +a && REGISTRAR_ADDRESS=0x... npx tsx scripts/approve-registrar.ts`.
@@ -119,7 +149,8 @@ If the parent domain itself changes you also need to redeploy — `parentNode` i
 - **Subname expiry inherits parent.** The contract passes `parentExpiry` to `setSubnodeRecord`; if the parent's registration lapses, all subnames lapse with it.
 - **Wallet mode requires `NEXT_PUBLIC_ENS_PARENT_DOMAIN` to match the contract's `parentNode`.** They're independent values today — keep them in sync, or move to reading `parentNode` off-chain via `useReadContract` and stop relying on the env var.
 - **ENS resolution uses `ENS_CHAIN_ID` (Sepolia), not mainnet.** `useEnsName`/`useEnsAvatar` in [Navbar.tsx](components/Navbar.tsx) only resolve names registered on Sepolia ENS. Drop the `chainId` arg or add `mainnet` to `chains` if you want mainnet primary names.
-- **Discovery is event-based.** The contract emits `SpecialistRegistered(node, owner, label)` but does not store an enumerable list. To list all specialists: `eth_getLogs` on the registrar, or the ENS subgraph for "subdomains of righthand.eth".
+- **Per-owner discovery is on-chain in v2; cross-owner discovery still isn't.** v2 stores `mapping(address => Registration[]) _ownedByCaller` and exposes `getOwned(address)` / `ownedCount(address)` — `useMySpecialists` calls these directly, no event scan. But this is **registration history**, not live ownership: if a wrapped subname is later transferred elsewhere on NameWrapper, the registrar can't observe it and the entry stays in the list. To enumerate every specialist across every owner you still need to scan `SpecialistRegistered` logs (or use the ENS subgraph for "subdomains of righthand.eth").
+- **iNFT mint is server-signed.** `/api/0g/mint-inft` uses `0G_PRIVATE_KEY` to call `SPARKiNFT.mintAgent(to=connectedAddress, …)` on 0G Galileo, so the user signs only the Sepolia register tx — no chain switch, no 0G gas paid by the user. Works because `mintAgent` has no auth modifier; anyone can mint to any address. To make the user sign the mint themselves you'd need to add chain 16602 to wagmi's `chains` and switch via `useSwitchChain` twice.
 - **Don't trust string-equality on addresses.** Always lower-case both sides before comparing (`a.toLowerCase() === b.toLowerCase()`); checksummed strings differ otherwise.
 
 ---
