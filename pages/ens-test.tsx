@@ -1,8 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Geist, Geist_Mono } from 'next/font/google';
 import { Navbar } from '@/components/Navbar';
-import { useParentStatus } from '@/lib/ens/useParentStatus';
-import { useRegisterSpecialist } from '@/lib/ens/useRegisterSpecialist';
+import { useParentStatus, useRegisterSpecialist } from '@/lib/ens/SpecialistRegistrar';
 import type { SpecialistRecords } from '@/lib/networkConfig';
 
 const geistSans = Geist({ variable: '--font-geist-sans', subsets: ['latin'] });

@@ -1,9 +1,11 @@
 "use client";
 
+// TaskMarket — wagmi hooks for the contract at TASK_MARKET_ADDRESS.
+// ABI + TASK_STATUS enum live in lib/abis/TaskMarket.
+
 import { useMemo } from "react";
 import type { Address } from "viem";
 import {
-    useAccount,
     useReadContract,
     useReadContracts,
     useWaitForTransactionReceipt,
@@ -29,7 +31,7 @@ export type TaskWithSpecialists = {
     specialists: Address[];
 };
 
-const isConfigured = (): boolean => Boolean(TASK_MARKET_ADDRESS);
+// ─── Reads ──────────────────────────────────────────────────────────────────
 
 // Reads tasksCount, then batches getTask + getTaskSpecialists for every id.
 // Returns descending (newest first) so the UI shows fresh tasks at the top.
@@ -38,15 +40,12 @@ export function useTasks(): {
     isLoading: boolean;
     refetch: () => void;
 } {
-    const enabled = isConfigured();
-
     const { data: count, refetch: refetchCount, isLoading: countLoading } =
         useReadContract({
             address: TASK_MARKET_ADDRESS,
             abi: TASK_MARKET_ABI,
             functionName: "tasksCount",
             chainId: ENS_CHAIN_ID,
-            query: { enabled },
         });
 
     const ids = useMemo(() => {
@@ -57,7 +56,7 @@ export function useTasks(): {
     const taskCalls = useMemo(
         () =>
             ids.map((id) => ({
-                address: TASK_MARKET_ADDRESS!,
+                address: TASK_MARKET_ADDRESS,
                 abi: TASK_MARKET_ABI,
                 functionName: "getTask" as const,
                 args: [id] as const,
@@ -69,7 +68,7 @@ export function useTasks(): {
     const specialistCalls = useMemo(
         () =>
             ids.map((id) => ({
-                address: TASK_MARKET_ADDRESS!,
+                address: TASK_MARKET_ADDRESS,
                 abi: TASK_MARKET_ABI,
                 functionName: "getTaskSpecialists" as const,
                 args: [id] as const,
@@ -84,7 +83,7 @@ export function useTasks(): {
         refetch: refetchTasks,
     } = useReadContracts({
         contracts: taskCalls,
-        query: { enabled: enabled && ids.length > 0 },
+        query: { enabled: ids.length > 0 },
     });
 
     const {
@@ -93,7 +92,7 @@ export function useTasks(): {
         refetch: refetchSpecialists,
     } = useReadContracts({
         contracts: specialistCalls,
-        query: { enabled: enabled && ids.length > 0 },
+        query: { enabled: ids.length > 0 },
     });
 
     const tasks: TaskWithSpecialists[] = useMemo(() => {
@@ -119,6 +118,19 @@ export function useTasks(): {
     };
 }
 
+export function useWithdrawable(addr: Address | undefined) {
+    return useReadContract({
+        address: TASK_MARKET_ADDRESS,
+        abi: TASK_MARKET_ABI,
+        functionName: "withdrawable",
+        args: addr ? [addr] : undefined,
+        chainId: ENS_CHAIN_ID,
+        query: { enabled: Boolean(addr) },
+    });
+}
+
+// ─── Writes ─────────────────────────────────────────────────────────────────
+
 export function usePostTask() {
     const { writeContract, data: hash, error, reset } = useWriteContract();
     const { isLoading: confirming, isSuccess: confirmed } =
@@ -131,10 +143,6 @@ export function usePostTask() {
         maxSpecialists: number,
         budgetWei: bigint,
     ) => {
-        if (!TASK_MARKET_ADDRESS) {
-            console.error("TASK_MARKET_ADDRESS is not configured");
-            return;
-        }
         writeContract({
             address: TASK_MARKET_ADDRESS,
             abi: TASK_MARKET_ABI,
@@ -154,7 +162,6 @@ function useTaskAction(functionName: "signOn" | "completeTask" | "cancelTask") {
         useWaitForTransactionReceipt({ hash, chainId: ENS_CHAIN_ID });
 
     const run = (taskId: bigint) => {
-        if (!TASK_MARKET_ADDRESS) return;
         writeContract({
             address: TASK_MARKET_ADDRESS,
             abi: TASK_MARKET_ABI,
@@ -177,7 +184,6 @@ export function useWithdraw() {
         useWaitForTransactionReceipt({ hash, chainId: ENS_CHAIN_ID });
 
     const withdraw = () => {
-        if (!TASK_MARKET_ADDRESS) return;
         writeContract({
             address: TASK_MARKET_ADDRESS,
             abi: TASK_MARKET_ABI,
@@ -187,20 +193,4 @@ export function useWithdraw() {
     };
 
     return { withdraw, hash, confirming, confirmed, error, reset };
-}
-
-export function useWithdrawable(addr: Address | undefined) {
-    return useReadContract({
-        address: TASK_MARKET_ADDRESS,
-        abi: TASK_MARKET_ABI,
-        functionName: "withdrawable",
-        args: addr ? [addr] : undefined,
-        chainId: ENS_CHAIN_ID,
-        query: { enabled: Boolean(addr && TASK_MARKET_ADDRESS) },
-    });
-}
-
-export function useTaskHelpers() {
-    const { address } = useAccount();
-    return useMemo(() => ({ self: address }), [address]);
 }
