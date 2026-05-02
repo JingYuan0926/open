@@ -28,36 +28,31 @@ import { detectOpener, openUrl } from "../axl/mcp-servers/aws-helpers/browser";
 // expire. For repeat demos, swap the generic https://signin.aws.amazon.com/console
 type Step = { url: string; pause: boolean; label: string };
 
-// ┌──────────────────────────────────────────────────────────────────────────┐
-// │  WARNING: SIGNIN_OAUTH_URL and SIGNIN_FORM_URL are SESSION-BOUND.        │
-// │  They contain a one-time PKCE code_challenge that AWS consumes after     │
-// │  one OAuth round-trip. After running this demo once, those URLs WILL     │
-// │  return:                                                                  │
-// │    {"error":"invalid_request","error_description":"Missing required ..."}│
-// │    400 Bad Request                                                        │
-// │  Before each fresh demo, open Chrome → AWS landing → click "Sign In to   │
-// │  Console" → copy the URL from the address bar (that's the OAuth URL),    │
-// │  then click root → copy that URL too (sign-in form URL). Update the      │
-// │  constants below, OR pass via env:                                       │
-// │    SIGNIN_OAUTH_URL='...' SIGNIN_FORM_URL='...' npm run test:browser     │
-// │  For repeatable demos that DON'T expire, replace both with the generic   │
-// │  https://signin.aws.amazon.com/console (AWS handles OAuth internally).   │
-// └──────────────────────────────────────────────────────────────────────────┘
-
-const SIGNIN_OAUTH_URL = process.env.SIGNIN_OAUTH_URL ??
-  "https://ap-southeast-2.signin.aws.amazon.com/oauth?client_id=arn%3Aaws%3Asignin%3A%3A%3Aconsole%2Fcanvas&code_challenge=MiVq-6q3-307SRiSo0dJYp25rMTSSz_-TLq69nPL1qo&code_challenge_method=SHA-256&response_type=code&redirect_uri=https%3A%2F%2Fconsole.aws.amazon.com%2Fconsole%2Fhome%3Fca-oauth-flow-id%3D4904%26hashArgs%3D%2523%26isauthcode%3Dtrue%26nc2%3Dh_si%26oauthStart%3D1777729653782%26sc_channel%3Dps%26src%3Dheader-signin%26state%3DhashArgsFromTB_ap-southeast-2_b269f17a7617f26e%26trk%3D06dd4e64-3ddf-405e-bec9-d2414185926c";
-
-const SIGNIN_FORM_URL = process.env.SIGNIN_FORM_URL ??
-  "https://signin.aws.amazon.com/signin?client_id=arn%3Aaws%3Asignin%3A%3A%3Aconsole%2Fcanvas&redirect_uri=https%3A%2F%2Fconsole.aws.amazon.com%2Fconsole%2Fhome%3Fca-oauth-flow-id%3D4904%26hashArgs%3D%2523%26isauthcode%3Dtrue%26nc2%3Dh_si%26oauthStart%3D1777729653782%26sc_channel%3Dps%26src%3Dheader-signin%26state%3DhashArgsFromTB_ap-southeast-2_b269f17a7617f26e%26trk%3D06dd4e64-3ddf-405e-bec9-d2414185926c&page=resolve&code_challenge=MiVq-6q3-307SRiSo0dJYp25rMTSSz_-TLq69nPL1qo&code_challenge_method=SHA-256&backwards_compatible=true";
+// Sign-in URL.
+//
+// We use the GENERIC URL (https://signin.aws.amazon.com/console) for both
+// step 2 and step 3. AWS generates a fresh PKCE code_challenge for each
+// visit, then handles the OAuth dance internally. Every visit works; URLs
+// never expire.
+//
+// DO NOT replace these with the long deep-link OAuth URLs you see in
+// Chrome's address bar. Those contain a single-use code_challenge that
+// AWS invalidates after one use. Reusing them returns:
+//   {"error":"invalid_request","error_description":"Missing required parameter"}
+// We tried that — it doesn't work for repeated demos.
+//
+// You can still override via env vars if you want to test a specific URL:
+//   SIGNIN_URL='...' npm run test:browser
+const SIGNIN_URL = process.env.SIGNIN_URL ?? "https://signin.aws.amazon.com/console";
 
 const DEFAULT_STEPS: Step[] = [
   { label: "AWS free-tier landing", pause: false,
     url: "https://aws.amazon.com/free/" },
   { label: "AI navigating to sign-in (OAuth flash)", pause: false,
-    url: SIGNIN_OAUTH_URL },
+    url: SIGNIN_URL },
   // ★ PAUSE here — sign-in form, user types root email + password
   { label: "AI clicked root, you type email + password here", pause: true,
-    url: SIGNIN_FORM_URL },
+    url: SIGNIN_URL },
   { label: "Console home", pause: false,
     url: "https://us-east-1.console.aws.amazon.com/console/home?region=us-east-1#" },
   { label: "EC2 dashboard", pause: false,
