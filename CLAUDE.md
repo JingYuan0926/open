@@ -505,6 +505,106 @@ The vibe is borrowed from [github.com/openclaw/openclaw](https://github.com/open
 
 ---
 
+# Chat UI prototype (Right-Hand workspace + host console)
+
+The user-facing front of Right-Hand AI: a chat interface that simulates dispatching tasks to ENS-discovered specialists, plus a host console for the seller side. Currently mocked — no real backend wiring. Mock data lives in [`lib/mock-data.ts`](lib/mock-data.ts), the orchestration is a `setTimeout`-driven state machine in [`lib/task-runner.ts`](lib/task-runner.ts). It's the demo narrative layer, not the production runtime.
+
+## Pages
+
+| route               | purpose                                                                                  |
+|---------------------|------------------------------------------------------------------------------------------|
+| `/`                 | original AXL transport demo — preserved from Phase 1                                     |
+| `/landing`          | new chat interface — input + mode picker (Solo / Pair / Swarm / Deep) + progress sidebar |
+| `/host`             | host console — agent grid, recent invocations, earnings, builder form                    |
+| `/agents/[id]`      | agent detail — identity & infra, runtime logs, task history, pricing rules               |
+| `/ens-test`         | (existing) ENS register/read                                                             |
+| `/tasks`            | (existing) `TaskMarket` post / sign-on                                                   |
+
+## File map
+
+```
+components/
+  ui/         — primitives: Button, Badge, Card, Input, Tabs, Disclosure, Icon
+  layout/     — AppShell (sidebar+topbar grid), Sidebar, TopBar, HostDashboard
+  chat/       — ChatInterface (split: messages + TaskProgressPanel),
+                ChatInput, ChatMessage, ModePicker, Welcome, ClarifyCard
+  host/       — AgentCard, AgentBuilderForm, AgentStatusTable, EarningsPanel
+  agents/     — AgentProfile, AgentRuntimePanel, AgentSkillTags
+lib/
+  mock-data.ts        — HOSTED_AGENTS, RECENT_INVOCATIONS, EXAMPLE_PROMPTS, MODES, NAV_*, HISTORY
+  build-script.ts     — buildScript(prompt, mode): TaskScript — branches by prompt regex
+  task-runner.ts      — useTaskRunner() React hook, the mock orchestration state machine
+types/index.ts        — shared TS types (HostedAgent, TaskScript, ClarifyState, AssistantMessage, …)
+```
+
+## Two interaction patterns inside the chat
+
+**Approve/Deny** (used by Japan / WiFi / AWS-config / default flows): the assistant message renders an `ApprovalCard` showing one shell command. User clicks Approve or Deny. Used when the agent has fully decided and just wants permission for a sensitive action.
+
+**Clarify** (used by the AWS+OpenClaw demo flow): when `script.clarifies` is set, `task-runner` pauses the run mid-flight and renders one [`ClarifyCard`](components/chat/ClarifyCard.tsx) per round. Each card has N multiple-choice questions; the user picks one option per question and clicks Continue. Modeled after Claude Code's `AskUserQuestion`. When all questions in a card are answered, the run resumes — and the final report's `reportItems` get template-interpolated with the picks (`{region}` → `us-east-1`, `{instanceType}` → `t3.micro`, etc.).
+
+The AWS+OpenClaw demo runs **two** clarify rounds, one per specialist:
+
+```
+prompt: "Deploy OpenClaw on a fresh EC2 instance"
+  ↓
+[Resolving specialists via ENS] → [Establishing AXL channels] → [Dispatching to AWS Provisioning]
+  ↓
+ClarifyCard #1 (AWS Provisioning Specialist):
+  Q: Which AWS region?       → us-east-1 / us-west-2 / eu-west-1 / ap-southeast-1
+  Q: What instance size?     → t3.micro / t3.small / t3.medium
+  ↓ Continue
+[Dispatching to OpenClaw Deployment]
+  ↓
+ClarifyCard #2 (OpenClaw Deployment Specialist):
+  Q: Which OpenClaw version? → 0.6.2 / 0.7.0-rc
+  Q: Admin password?         → Auto-generated / Prompted on install
+  ↓ Continue
+[Synthesizing final report]
+  ↓
+Final report — items interpolated with picks
+```
+
+## task-runner state machine
+
+[`useTaskRunner()`](lib/task-runner.ts) returns `{ messages, run, busy, pendingApproval, pendingClarify, submit, resolveApproval, resolveClarify }`.
+
+Two flow paths chosen by whether `script.clarifies` is present:
+
+- **Approval flow**: step animation → approval card → on approve: more step animation → final report.
+- **Clarify flow**: step animation → clarify[0] card → on submit: step animation + clarify[1] card → on submit: synthesis step → final report. Handles N clarify rounds (one per specialist).
+
+Timing is `setTimeout`-driven via an `at(ms, fn)` helper. All timers clear on unmount or new submit. Phases progress through the `RunPhase` enum (`routing → discovering → executing → clarify | approval → finishing → done`).
+
+## How prompts route to flows
+
+[`buildScript(prompt, mode)`](lib/build-script.ts) regex-matches the prompt and returns a `TaskScript`:
+
+| prompt regex                                        | flow                                                                  |
+|-----------------------------------------------------|-----------------------------------------------------------------------|
+| `/openclaw.*ec2|ec2.*openclaw|deploy.*openclaw/i`   | AWS+OpenClaw clarify flow (2 specialists, 2 clarify rounds)           |
+| `/japan|trip/i`                                     | Japan trip planner approval flow (3 specialists)                      |
+| `/wifi|wi-?fi/i`                                    | WiFi diagnostic approval flow (2 specialists)                         |
+| `/aws|cloud/i` (without openclaw)                   | AWS config approval flow (2 specialists)                              |
+| (default)                                           | OpenClaw bootstrap approval flow (3 specialists)                      |
+
+`mode` (Solo/Pair/Swarm/Deep) trims or extends the specialist list **after** the branch picks them.
+
+## Tailwind setup
+
+The repo runs **Tailwind v4** (`@import "tailwindcss"` in `globals.css`, `@tailwindcss/postcss` plugin). Custom theme tokens live in a `@theme` block in [`styles/globals.css`](styles/globals.css), **not a `tailwind.config.ts`**. Tokens: `bg-bg`, `bg-surface{,-2,-3}`, `text-ink{,-2,-3,-4}`, `border-border{,-strong}`, `bg-accent{,-soft,-fg}`, `shadow-{xs,sm,md}`, `text-2xs`. Fonts: Inter + JetBrains Mono via Google Fonts import in the same file.
+
+## Gotchas
+
+- **All data is mocked.** `HOSTED_AGENTS` and `RECENT_INVOCATIONS` in `lib/mock-data.ts` are fake — not derived from ENS or any contract. By design — the chat UI is the *narrative* layer; actual agent execution lives in Phase 2a's `axl/` + the `demo:final` pipeline.
+- **`AppShell`'s grid item children need `h-full` to span row height.** [`TaskProgressPanel`](components/chat/TaskProgressPanel.tsx)'s `<aside>` has `h-full` on it — without that, the content collapses to its natural height while the wrapper grid cell stays full-height, leaving an unstyled gap below. Same pattern applies to any new aside-style panel under `AppShell`.
+- **Per-message clarify state is preserved on the `AssistantMessage`** as `clarifies: ClarifyState[]`. Once answered, the card locks (radio shows the pick, no Continue button) — re-rendering the message later still shows the chosen answers. `pendingClarify` is just an index pointer to the active card.
+- **Path alias is `@/*` from repo root.** Imports look like `@/components/chat/ClarifyCard`. Configured in `tsconfig.json`.
+- **The chat UI is not at `/`.** When it landed, the original AXL transport demo at `/` was preserved; the new chat lives at `/landing`. If you ever want to promote the chat to `/`, move the AXL demo to a sub-route first — don't overwrite.
+- **`_app.tsx` wraps everything in `<Providers>` (RainbowKit/wagmi/react-query) AND `<Head>`** with title + viewport. Don't drop either when editing.
+
+---
+
 # Phase 2b — ENS task marketplace + royalties (next)
 
 Phase 2a wires execution. Phase 2b turns the demo into the real product flow: **a user posts a task on ENS, OpenClaw specialists bid/sign in, the elected swarm coordinates over AXL, and MCP performs the actual work on the user's machine.**
