@@ -358,6 +358,17 @@ npm install --legacy-peer-deps @aws-sdk/client-ec2@^3 ssh2@^1.16 @types/ssh2
 
 Plus AWS access key in `~/.aws/credentials`, EC2 keypair `nanoclaw-key` saved as `axl/nanoclaw-key.pem` (chmod 600). Defaults: us-east-1, t2.micro, AMI `ami-0c02fb55956c7d316`.
 
+**The CLI-based path (`demo:final` / `demo:cli-aws`) is the working alternative** — same outcome (real EC2 launch + remote install) without any `@aws-sdk` or `ssh2` deps, since it shells out to the system `aws` and `ssh` binaries. If you only need the demo flow, prefer this path. If you need programmatic SDK access from inside the AXL/MCP server (e.g. for `aws.ts` to be reachable over the mesh), you still need to reinstall the SDK deps as above.
+
+### Gotchas for `demo:cli-aws`
+
+- **Required IAM permissions.** The IAM user needs `AmazonEC2FullAccess` + `AmazonSSMReadOnlyAccess` (or a custom policy with `ec2:CreateKeyPair`, `ec2:RunInstances`, `ec2:Describe*`, `ec2:CreateSecurityGroup`, `ec2:AuthorizeSecurityGroupIngress`, `ec2:CreateTags`, `ec2:TerminateInstances`, `ssm:GetParameter`). Without SSM access the AMI lookup fails.
+- **AWS Free Plan only allows specific instance types.** New accounts (post-2024 Free Plan) reject `t2.micro` with `InvalidParameterCombination`. The script defaults to `t3.micro`. If even that's rejected, run `aws ec2 describe-instance-types --filters Name=free-tier-eligible,Values=true --region us-east-1` to see what's allowed.
+- **Default VPC must exist** in the chosen region. `aws ec2 describe-vpcs --filters Name=isDefault,Values=true --region us-east-1` should return a VPC. If it doesn't, the script needs `--subnet-id`.
+- **`.env` is base64-piped, not scp'd.** The local `.env` is read on Mac, base64-encoded, and inlined inside the install script's bash payload. Decoded on EC2, written to `~/openclaw/.env`, chmod 600. Sidesteps shell-escape issues with newlines/quotes/specials in secrets. Logs never contain the decoded content because the install script runs over an interactive `ssh -tt` session.
+- **Keypair recovery.** If the AWS keypair `openclaw-demo-key` exists but the local PEM at `axl/openclaw-demo-key.pem` is missing, the script aborts (it can't re-mint a PEM for an existing key). Recover with `aws ec2 delete-key-pair --key-name openclaw-demo-key --region us-east-1` then re-run.
+- **Long-running `start.sh` keeps SSH open.** The interactive `ssh -tt` doesn't return until the remote command exits. If `start.sh` runs a server in the foreground, the popup terminal stays connected — that's good for the demo (audience sees the server log live). To detach cleanly: type `~.` in the SSH session, or have `start.sh` background its server with `nohup … &`.
+
 ## What's parked, ready to wire (the AXL/MCP integration)
 
 The full Phase 2a vision was: a remote agent on Mac B (`agent-b`) calls AXL's `/mcp/<user-peer>/aws` endpoint → AXL forwards through Yggdrasil to user's Mac → vendored `mcp-router.py` (port 9003) dispatches → `aws.ts` MCP server (port 9100) prompts approval → runs the demo flow.
