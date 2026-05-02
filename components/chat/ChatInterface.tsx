@@ -3,12 +3,14 @@ import { Welcome } from "@/components/chat/Welcome";
 import { ChatInput } from "@/components/chat/ChatInput";
 import { TaskCreationCard, suggestSkills } from "@/components/chat/TaskCreationCard";
 import { TaskProgressPanel } from "@/components/chat/TaskProgressPanel";
+import { DemoFlow } from "@/components/chat/DemoFlow";
 import { MODES } from "@/lib/mock-data";
 import type { ModeId } from "@/types";
 
 type ChatItem =
   | { kind: "user"; id: string; content: string }
-  | { kind: "draft"; id: string; prompt: string; mode: ModeId };
+  | { kind: "draft"; id: string; prompt: string; mode: ModeId; postedLabel?: string }
+  | { kind: "demo"; id: string; label: string };
 
 const MODE_TO_MAX: Record<ModeId, number> = {
   solo: 1,
@@ -44,6 +46,22 @@ export function ChatInterface() {
   };
   const handlePick = (p: string) => submit(p, mode);
 
+  const handlePosted = React.useCallback((draftId: string, label: string) => {
+    setItems((prev) => {
+      // Idempotent: if a demo item already exists for this draft, don't add another.
+      if (prev.some((x) => x.kind === "demo" && x.id === `demo-${draftId}`)) return prev;
+      const insertAt = prev.findIndex((x) => x.id === draftId);
+      if (insertAt < 0) return prev;
+      const next = [...prev];
+      next.splice(insertAt + 1, 0, {
+        kind: "demo",
+        id: `demo-${draftId}`,
+        label,
+      });
+      return next;
+    });
+  }, []);
+
   const modeLabel = MODES.find((x) => x.id === mode)!.label;
 
   return (
@@ -54,18 +72,25 @@ export function ChatInterface() {
             <Welcome onPick={handlePick} />
           ) : (
             <div className="max-w-[760px] mx-auto px-8">
-              {items.map((it) =>
-                it.kind === "user" ? (
-                  <UserBubble key={it.id} content={it.content} />
-                ) : (
+              {items.map((it) => {
+                if (it.kind === "user") return <UserBubble key={it.id} content={it.content} />;
+                if (it.kind === "demo")
+                  return (
+                    <AssistantWrapper key={it.id} modeLabel={modeLabel}>
+                      <DemoFlow taskLabel={it.label} />
+                    </AssistantWrapper>
+                  );
+                return (
                   <AssistantDraft
                     key={it.id}
+                    draftId={it.id}
                     prompt={it.prompt}
                     modeLabel={modeLabel}
                     maxSpecialists={MODE_TO_MAX[it.mode]}
+                    onPosted={handlePosted}
                   />
-                ),
-              )}
+                );
+              })}
             </div>
           )}
         </div>
@@ -99,13 +124,41 @@ function UserBubble({ content }: { content: string }) {
 }
 
 function AssistantDraft({
+  draftId,
   prompt,
   modeLabel,
   maxSpecialists,
+  onPosted,
 }: {
+  draftId: string;
   prompt: string;
   modeLabel: string;
   maxSpecialists: number;
+  onPosted: (draftId: string, label: string) => void;
+}) {
+  return (
+    <AssistantWrapper modeLabel={modeLabel}>
+      <p className="mb-2.5">
+        I&rsquo;ll publish this on the ENS task marketplace so matching
+        specialists can sign on. Review the spec, edit anything, then post
+        it on Sepolia.
+      </p>
+      <TaskCreationCard
+        initialDescription={prompt}
+        initialSkills={suggestSkills(prompt)}
+        initialMaxSpecialists={maxSpecialists}
+        onPosted={({ label }) => onPosted(draftId, label)}
+      />
+    </AssistantWrapper>
+  );
+}
+
+function AssistantWrapper({
+  modeLabel,
+  children,
+}: {
+  modeLabel: string;
+  children: React.ReactNode;
 }) {
   return (
     <div className="flex gap-3.5 py-4 border-t border-border first:border-t-0">
@@ -117,18 +170,7 @@ function AssistantDraft({
           Right-Hand{" "}
           <span className="text-[12px] text-ink-3 font-normal">{modeLabel} mode</span>
         </div>
-        <div className="text-[14px] leading-relaxed text-ink">
-          <p className="mb-2.5">
-            I&rsquo;ll publish this on the ENS task marketplace so matching
-            specialists can sign on. Review the spec, edit anything, then post
-            it on Sepolia.
-          </p>
-          <TaskCreationCard
-            initialDescription={prompt}
-            initialSkills={suggestSkills(prompt)}
-            initialMaxSpecialists={maxSpecialists}
-          />
-        </div>
+        <div className="text-[14px] leading-relaxed text-ink">{children}</div>
       </div>
     </div>
   );

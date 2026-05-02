@@ -45,10 +45,12 @@ export function TaskCreationCard({
   initialDescription,
   initialSkills,
   initialMaxSpecialists = 3,
+  onPosted,
 }: {
   initialDescription: string;
   initialSkills?: string;
   initialMaxSpecialists?: number;
+  onPosted?: (info: { label: string; taskId: bigint }) => void;
 }) {
   const { address } = useAccount();
 
@@ -114,6 +116,14 @@ export function TaskCreationCard({
   }, [receipt]);
 
   const ensName = posted ? `${posted.label}.${ENS_PARENT_DOMAIN}` : "";
+
+  const firedRef = React.useRef(false);
+  React.useEffect(() => {
+    if (posted && !firedRef.current) {
+      firedRef.current = true;
+      onPosted?.({ label: posted.label, taskId: posted.taskId });
+    }
+  }, [posted, onPosted]);
 
   const isLocked = step !== "editing";
 
