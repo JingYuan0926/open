@@ -8,6 +8,7 @@ import { ENS_CHAIN_ID } from "@/lib/networkConfig";
 const NAV_LINKS = [
   { label: "Home", href: "/" },
   { label: "ENS", href: "/ens-test" },
+  { label: "Tasks", href: "/tasks" },
 ];
 
 export function Navbar() {
