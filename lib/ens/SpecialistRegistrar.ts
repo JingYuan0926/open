@@ -333,3 +333,91 @@ export function useMySpecialists() {
         },
     });
 }
+
+// ─── useAllSpecialists ─────────────────────────────────────────────────────
+// Returns every specialist ever registered through the contract, across every
+// owner — reads `getAll()` once and batches the six text-record reads per
+// node through Multicall3 (one extra RPC call total).
+//
+// Same caveat as `useMySpecialists`: registration history, not current
+// ownership. If a wrapped subname has been transferred after registration,
+// the entry stays in the list (registrar can't observe NameWrapper transfers).
+
+export type AnySpecialist = {
+    label: string;
+    fullName: string;
+    node: `0x${string}`;
+    owner: Address;
+    records: SpecialistRecords;
+};
+
+export function useAllSpecialists() {
+    const client = usePublicClient({ chainId: ENS_CHAIN_ID });
+
+    return useQuery<AnySpecialist[]>({
+        queryKey: ["all-specialists", ENS_CHAIN_ID],
+        enabled: Boolean(client),
+        staleTime: 30_000,
+        queryFn: async () => {
+            if (!client) return [];
+
+            const all = await client.readContract({
+                address: SPECIALIST_REGISTRAR_ADDRESS,
+                abi: SPECIALIST_REGISTRAR_ABI,
+                functionName: "getAll",
+            });
+
+            if (all.length === 0) return [];
+
+            // Flatten every (node, key) read into a single Multicall3 batch
+            // so the cost is O(1) RPC roundtrips regardless of list length.
+            const flatCalls = all.flatMap((reg) =>
+                TEXT_KEY_ORDER.map((key) => ({
+                    address: ENS_PUBLIC_RESOLVER_ADDRESS,
+                    abi: PUBLIC_RESOLVER_ABI,
+                    functionName: "text" as const,
+                    args: [reg.node, key] as const,
+                })),
+            );
+
+            const reads = await client.multicall({
+                contracts: flatCalls,
+                allowFailure: true,
+            });
+
+            const results: AnySpecialist[] = all.map((reg, i) => {
+                const slice = reads.slice(
+                    i * TEXT_KEY_ORDER.length,
+                    (i + 1) * TEXT_KEY_ORDER.length,
+                );
+                const [
+                    axlPubkey,
+                    skills,
+                    workspaceUri,
+                    tokenId,
+                    price,
+                    version,
+                ] = slice.map((r) =>
+                    r.status === "success" ? (r.result as string) : "",
+                );
+                return {
+                    label: reg.label,
+                    fullName: `${reg.label}.${ENS_PARENT_DOMAIN}`,
+                    node: reg.node,
+                    owner: reg.owner,
+                    records: {
+                        axlPubkey,
+                        skills,
+                        workspaceUri,
+                        tokenId,
+                        price,
+                        version,
+                    },
+                };
+            });
+
+            // Newest first.
+            return results.reverse();
+        },
+    });
+}
