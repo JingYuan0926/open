@@ -28,14 +28,17 @@ import { detectOpener, openUrl } from "../axl/mcp-servers/aws-helpers/browser";
 // expire. For repeat demos, swap the generic https://signin.aws.amazon.com/console
 type Step = { url: string; pause: boolean; label: string };
 
+// Using GENERIC sign-in URL (https://signin.aws.amazon.com/console) instead
+// of the OAuth deep-link with code_challenge/state — those expire after one
+// use and cause "invalid_request — Missing required parameter" 400 errors.
+// The generic URL triggers a fresh OAuth flow each time, so demo is repeatable.
 const DEFAULT_STEPS: Step[] = [
   { label: "AWS free-tier landing", pause: false,
-    url: "https://aws.amazon.com/free/?trk=06dd4e64-3ddf-405e-bec9-d2414185926c&sc_channel=ps&ef_id=CjwKCAjwntHPBhAaEiwA_Xp6RnY7G9dZSmhU0VN020DtbAGdylUEVlHhJo1aVZtg-qgsAyMYQNVwjRoCB7sQAvD_BwE:G:s&s_kwcid=AL!4422!3!798628412789!e!!g!!aws!23606217014!196761071947&gad_campaignid=23606217014&gbraid=0AAAAADjHtp-Y4t6OtBT9be4A-mk1PZ4NA&gclid=CjwKCAjwntHPBhAaEiwA_Xp6RnY7G9dZSmhU0VN020DtbAGdylUEVlHhJo1aVZtg-qgsAyMYQNVwjRoCB7sQAvD_BwE" },
-  { label: "Sign-in OAuth landing", pause: false,
-    url: "https://ap-southeast-2.signin.aws.amazon.com/oauth?client_id=arn%3Aaws%3Asignin%3A%3A%3Aconsole%2Fcanvas&code_challenge=3TM4oFO6lpXQVGYP12pd10_ZLVk3xE7nB7Ld1DHnFOg&code_challenge_method=SHA-256&response_type=code&redirect_uri=https%3A%2F%2Fconsole.aws.amazon.com%2Fconsole%2Fhome%3Fca-oauth-flow-id%3D21d0%26hashArgs%3D%2523%26isauthcode%3Dtrue%26nc2%3Dh_si%26oauthStart%3D1777728317636%26refid%3D06dd4e64-3ddf-405e-bec9-d2414185926c%26src%3Dheader-signin%26state%3DhashArgsFromTB_ap-southeast-2_641a682ff51c84f1" },
-  // ★ PAUSE here — user types email and password
+    url: "https://aws.amazon.com/free/" },
+  // ★ PAUSE here — Chrome redirects through OAuth → sign-in form → user types
+  // root email + password. Page stays on the sign-in tab until login completes.
   { label: "Sign in with root (you type credentials here)", pause: true,
-    url: "https://signin.aws.amazon.com/signin?client_id=arn%3Aaws%3Asignin%3A%3A%3Aconsole%2Fcanvas&redirect_uri=https%3A%2F%2Fconsole.aws.amazon.com%2Fconsole%2Fhome%3Fca-oauth-flow-id%3D21d0%26hashArgs%3D%2523%26isauthcode%3Dtrue%26nc2%3Dh_si%26oauthStart%3D1777728317636%26refid%3D06dd4e64-3ddf-405e-bec9-d2414185926c%26src%3Dheader-signin%26state%3DhashArgsFromTB_ap-southeast-2_641a682ff51c84f1&page=resolve&code_challenge=3TM4oFO6lpXQVGYP12pd10_ZLVk3xE7nB7Ld1DHnFOg&code_challenge_method=SHA-256&backwards_compatible=true" },
+    url: "https://signin.aws.amazon.com/console" },
   { label: "Console home", pause: false,
     url: "https://us-east-1.console.aws.amazon.com/console/home?region=us-east-1#" },
   { label: "EC2 dashboard", pause: false,
