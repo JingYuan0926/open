@@ -11,7 +11,7 @@ import type { ModeId } from "@/types";
 export function ChatInterface() {
   const [input, setInput] = React.useState("");
   const [mode, setMode] = React.useState<ModeId>("swarm");
-  const { messages, run, busy, pendingApproval, submit, resolveApproval } = useTaskRunner();
+  const { messages, run, busy, pendingApproval, pendingClarify, submit, resolveApproval, resolveClarify } = useTaskRunner();
   const scrollRef = React.useRef<HTMLDivElement>(null);
 
   React.useEffect(() => {
@@ -30,13 +30,16 @@ export function ChatInterface() {
   return (
     <div className="grid grid-cols-[1fr_360px] min-h-0 min-w-0 max-[1080px]:grid-cols-1">
       <div className="grid grid-rows-[1fr_auto] min-h-0 bg-bg relative">
-        {pendingApproval && (
-          <button onClick={() => document.querySelector(".approval-target")?.scrollIntoView({ behavior: "smooth", block: "center" })}
-            className="absolute top-3.5 right-6 z-10 flex items-center gap-2.5 bg-white text-ink border border-border-strong px-3 py-1.5 rounded-md shadow-md text-[12.5px] cursor-pointer">
+        {(pendingApproval || pendingClarify) && (
+          <div className="absolute top-3.5 right-6 z-10 flex items-center gap-2.5 bg-white text-ink border border-border-strong px-3 py-1.5 rounded-md shadow-md text-[12.5px]">
             <span className="w-1.5 h-1.5 rounded-full bg-amber-500 pulse-dot" />
-            <span><b className="font-medium">1 approval</b> pending — sensitive action</span>
+            <span>
+              {pendingClarify
+                ? <><b className="font-medium">Question</b> pending — agent needs your input</>
+                : <><b className="font-medium">1 approval</b> pending — sensitive action</>}
+            </span>
             <Icon name="chevron-right" size={12} />
-          </button>
+          </div>
         )}
         <div ref={scrollRef} className="overflow-y-auto pt-8 pb-6">
           {messages.length === 0 ? (
@@ -46,7 +49,8 @@ export function ChatInterface() {
               {messages.map((m) => (
                 <ChatMessageView key={m.id} m={m} modeLabel={modeLabel}
                   onApprove={() => resolveApproval("approved")}
-                  onDeny={() => resolveApproval("denied")} />
+                  onDeny={() => resolveApproval("denied")}
+                  onClarify={(index, answers) => resolveClarify(index, answers)} />
               ))}
             </div>
           )}

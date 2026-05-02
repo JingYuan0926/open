@@ -1,8 +1,9 @@
 export type AgentStatus = "online" | "offline" | "syncing";
 export type ModeId = "solo" | "pair" | "swarm" | "deep";
-export type RunPhase = "idle" | "routing" | "discovering" | "executing" | "approval" | "finishing" | "done";
+export type RunPhase = "idle" | "routing" | "discovering" | "executing" | "approval" | "clarify" | "finishing" | "done";
 export type StepStatus = "pending" | "active" | "done";
 export type ApprovalStatus = "pending" | "approved" | "denied";
+export type ClarifyStatus = "pending" | "answered";
 
 export interface HostedAgent {
   id: string;
@@ -50,6 +51,18 @@ export interface ChatStep { title: string; meta?: string; status: StepStatus; du
 
 export interface ApprovalState { actor: string; command: string; status: ApprovalStatus; }
 
+export interface ClarifyOption { label: string; description?: string; }
+export interface ClarifyQuestion { id: string; question: string; options: ClarifyOption[]; }
+export interface ClarifyDef {
+  actor: string;
+  context?: string;
+  questions: ClarifyQuestion[];
+}
+export interface ClarifyState extends ClarifyDef {
+  answers: Record<string, string>;
+  status: ClarifyStatus;
+}
+
 export interface ReportState { title: string; items: string[]; }
 
 export interface AssistantMessage {
@@ -59,6 +72,7 @@ export interface AssistantMessage {
   intro: string;
   steps: ChatStep[];
   approval: ApprovalState | null;
+  clarifies: ClarifyState[];
   report: ReportState | null;
   script: TaskScript;
   taskId: string;
@@ -72,6 +86,7 @@ export interface TaskScript {
   intro: string;
   approvalCmd: string;
   approvalActor: string;
+  clarifies?: ClarifyDef[];
   reportTitle: string;
   reportItems: string[];
 }
