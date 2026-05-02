@@ -1,5 +1,8 @@
 import * as React from "react";
+import { ConnectButton } from "@rainbow-me/rainbowkit";
+import { useEnsAvatar, useEnsName } from "wagmi";
 import { Button } from "@/components/ui/Button";
+import { ENS_CHAIN_ID } from "@/lib/networkConfig";
 import clsx from "clsx";
 
 export function TopBar({ crumbs, view, onSwitchView }: {
@@ -25,11 +28,72 @@ export function TopBar({ crumbs, view, onSwitchView }: {
             </button>
           ))}
         </div>
-        <span className="inline-flex items-center gap-1.5 px-2.5 py-1 border border-border rounded-full text-[12px] text-ink-3 whitespace-nowrap">
-          <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />Connector connected
-        </span>
+        <ConnectButton.Custom>
+          {({ account, chain, openAccountModal, openChainModal, openConnectModal, mounted }) => {
+            const ready = mounted;
+            const connected = ready && account && chain;
+            return (
+              <div
+                {...(!ready && {
+                  "aria-hidden": true,
+                  style: { opacity: 0, pointerEvents: "none", userSelect: "none" },
+                })}
+              >
+                {!connected ? (
+                  <button
+                    onClick={openConnectModal}
+                    type="button"
+                    className="rounded-full bg-accent text-accent-fg px-3 py-1 text-[12px] font-medium hover:bg-accent/90 whitespace-nowrap transition-colors"
+                  >
+                    Connect Wallet
+                  </button>
+                ) : chain.unsupported ? (
+                  <button
+                    onClick={openChainModal}
+                    type="button"
+                    className="rounded-full bg-red-600 text-white px-3 py-1 text-[12px] font-medium hover:bg-red-500 whitespace-nowrap transition-colors"
+                  >
+                    Wrong network
+                  </button>
+                ) : (
+                  <AccountPill
+                    address={account.address as `0x${string}`}
+                    fallbackLabel={account.displayName}
+                    onClick={openAccountModal}
+                  />
+                )}
+              </div>
+            );
+          }}
+        </ConnectButton.Custom>
         <Button variant="ghost" icon="bell" />
       </div>
     </header>
+  );
+}
+
+function AccountPill({ address, fallbackLabel, onClick }: {
+  address: `0x${string}`; fallbackLabel: string; onClick: () => void;
+}) {
+  const { data: ensName } = useEnsName({ address, chainId: ENS_CHAIN_ID });
+  const { data: ensAvatar } = useEnsAvatar({
+    name: ensName ?? undefined,
+    chainId: ENS_CHAIN_ID,
+  });
+  const label = ensName ?? fallbackLabel;
+  return (
+    <button
+      onClick={onClick}
+      type="button"
+      className="flex items-center gap-1.5 rounded-full border border-border bg-white px-1.5 py-1 pr-2.5 text-[12px] font-medium text-ink hover:bg-surface-2 transition-colors"
+    >
+      {ensAvatar ? (
+        // eslint-disable-next-line @next/next/no-img-element
+        <img src={ensAvatar} alt="" className="h-5 w-5 rounded-full" />
+      ) : (
+        <span className="h-5 w-5 rounded-full bg-gradient-to-br from-indigo-500 to-purple-500" />
+      )}
+      <span className="max-w-[140px] truncate">{label}</span>
+    </button>
   );
 }
