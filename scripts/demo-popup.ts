@@ -63,31 +63,60 @@ function findWtExe(): string | null {
   return null;
 }
 
-function spawnPopup(): void {
-  // Note: wt.exe treats `;` as its own command separator. We use `&&`
-  // throughout the bash command instead, and `--` to mark end-of-wt-args.
+function spawnPopupWindowsOrWSL(): void {
+  // Note: wt.exe treats `;` as its own command separator and embedded `"`
+  // mangles its commandline parser. Bash command uses `&&` only and avoids
+  // embedded quotes — `read` alone (no -p) just waits for Enter.
   const envPrefix =
     `${process.env.MOCK ? "MOCK=1 " : ""}${process.env.KEEP ? "KEEP=1 " : ""}`;
-  const bashCmd = `${envPrefix}npm run demo:cli-only && echo && echo "Press Enter to close" && read`;
+  const bashCmd = `${envPrefix}npm run demo:cli-only && echo && echo Press Enter to close && read`;
 
-  const wt = findWtExe();
-  if (!wt) {
-    info("wt.exe not found — falling back to cmd.exe new window (less pretty)");
-    spawn("cmd.exe", [
-      "/c", "start", "AI Execution",
-      "wsl.exe", "-d", WSL_DISTRO, "--cd", process.cwd(),
-      "bash", "-c", bashCmd,
-    ], { detached: true, stdio: "ignore" }).unref();
-    return;
-  }
-
-  spawn(wt, [
-    "new-window",
-    "--title", "AI Execution",
-    "--",
+  // Always use cmd.exe /c start — opens a new console window running wsl.
+  // wt.exe's argument parsing for nested commandlines is brittle, the
+  // simpler cmd-start path Just Works.
+  spawn("cmd.exe", [
+    "/c", "start", "AI Execution",
     "wsl.exe", "-d", WSL_DISTRO, "--cd", process.cwd(),
     "bash", "-c", bashCmd,
   ], { detached: true, stdio: "ignore" }).unref();
+}
+
+function spawnPopupMac(): void {
+  const envPrefix =
+    `${process.env.MOCK ? "MOCK=1 " : ""}${process.env.KEEP ? "KEEP=1 " : ""}`;
+  // AppleScript "do script" runs in a new Terminal window. Escape ' and "
+  // for AppleScript string literal.
+  const cwd = process.cwd();
+  const shellCmd = `cd '${cwd.replace(/'/g, "'\\''")}' && ${envPrefix}npm run demo:cli-only && echo && echo Press Enter to close && read`;
+  const escForApple = shellCmd.replace(/\\/g, "\\\\").replace(/"/g, '\\"');
+  spawn("osascript", [
+    "-e", `tell application "Terminal" to do script "${escForApple}"`,
+    "-e", `tell application "Terminal" to activate`,
+  ], { detached: true, stdio: "ignore" }).unref();
+}
+
+function isWSL(): boolean {
+  if (platform() !== "linux") return false;
+  try {
+    const { readFileSync } = require("node:fs") as typeof import("node:fs");
+    const ver = readFileSync("/proc/version", "utf8").toLowerCase();
+    return ver.includes("microsoft") || ver.includes("wsl");
+  } catch {
+    return false;
+  }
+}
+
+function spawnPopup(): void {
+  const p = platform();
+  if (p === "darwin") {
+    spawnPopupMac();
+    return;
+  }
+  if (p === "win32" || isWSL()) {
+    spawnPopupWindowsOrWSL();
+    return;
+  }
+  info(`(host OS '${p}' has no popup support yet — popup not spawned)`);
 }
 
 (async () => {
@@ -120,13 +149,9 @@ function spawnPopup(): void {
   await sleep(BROWSER_DELAY);
 
   // ─── 5. POP a new terminal window for AI execution
-  step(5, "🪟 spawning AI execution terminal");
-  if (platform() !== "linux") {
-    info(`(host OS '${platform()}' not WSL — would use osascript on macOS, not yet wired)`);
-  } else {
-    spawnPopup();
-    ok("popup spawned — watch the new Windows Terminal window for SDK + SSH execution");
-  }
+  step(5, "spawning AI execution terminal");
+  spawnPopup();
+  ok("popup spawned — watch the new terminal window for SDK + SSH execution");
 
   console.log(`\n${green}━━ main flow done — popup is doing the rest ━━${reset}`);
   console.log(`${dim}Tip: arrange Chrome and the popup terminal side-by-side for the demo.${reset}\n`);
