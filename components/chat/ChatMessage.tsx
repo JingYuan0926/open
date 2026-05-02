@@ -2,6 +2,7 @@ import * as React from "react";
 import { Icon } from "@/components/ui/Icon";
 import { Button } from "@/components/ui/Button";
 import { Badge } from "@/components/ui/Badge";
+import { ClarifyCard } from "@/components/chat/ClarifyCard";
 import type { ChatMessage as TChatMessage, ChatStep, ApprovalState, ReportState } from "@/types";
 import clsx from "clsx";
 
@@ -95,9 +96,10 @@ export function FinalReport({ title, items, onAsk }: ReportState & { onAsk: () =
   );
 }
 
-export function ChatMessageView({ m, modeLabel, onApprove, onDeny }: {
+export function ChatMessageView({ m, modeLabel, onApprove, onDeny, onClarify }: {
   m: TChatMessage; modeLabel: string;
   onApprove: () => void; onDeny: () => void;
+  onClarify: (index: number, answers: Record<string, string>) => void;
 }) {
   if (m.role === "user") {
     return (
@@ -120,6 +122,9 @@ export function ChatMessageView({ m, modeLabel, onApprove, onDeny }: {
         <div className="text-[14px] leading-relaxed text-ink">
           <p className="mb-2.5">{m.intro}</p>
           <StepList steps={m.steps} />
+          {m.clarifies.map((c, i) => (
+            <ClarifyCard key={i} clarify={c} onSubmit={(answers) => onClarify(i, answers)} />
+          ))}
           {m.approval && <ApprovalCard {...m.approval} onApprove={onApprove} onDeny={onDeny} />}
           {m.report && <FinalReport {...m.report} onAsk={() => {}} />}
         </div>

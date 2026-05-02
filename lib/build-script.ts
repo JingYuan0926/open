@@ -1,9 +1,10 @@
-import type { ModeId, TaskScript } from "@/types";
+import type { ModeId, TaskScript, ClarifyDef } from "@/types";
 
 export function buildScript(prompt: string, mode: ModeId): TaskScript {
   const isJapan = /japan|trip/i.test(prompt);
   const isWifi = /wifi|wi-?fi/i.test(prompt);
-  const isAws = /aws|cloud/i.test(prompt);
+  const isAwsOpenclaw = /(openclaw.*ec2|ec2.*openclaw|openclaw.*aws|aws.*openclaw|deploy.*openclaw|openclaw.*server)/i.test(prompt);
+  const isAws = !isAwsOpenclaw && /aws|cloud/i.test(prompt);
 
   let coordinator = "Coordinator";
   let specialists = [
@@ -14,6 +15,7 @@ export function buildScript(prompt: string, mode: ModeId): TaskScript {
   let intro = "Routing to three specialists: bootstrap, dependencies, verification. Nothing local will run without your approval.";
   let approvalCmd = "node --version";
   let approvalActor = "Dependency Specialist wants to check your Node runtime before installing OpenClaw.";
+  let clarifies: ClarifyDef[] | undefined;
   let reportTitle = "OpenClaw installed and sample agent verified";
   let reportItems = [
     "Discovered specialists via ENS (3 found)",
@@ -23,7 +25,72 @@ export function buildScript(prompt: string, mode: ModeId): TaskScript {
     "Ran verification: sample agent responded in 412ms",
   ];
 
-  if (isJapan) {
+  if (isAwsOpenclaw) {
+    specialists = [
+      { id: "AW", name: "AWS Provisioning Specialist", role: "Provision" },
+      { id: "OC", name: "OpenClaw Deployment Specialist", role: "Deploy" },
+    ];
+    intro = "Pair mode. AWS provisioning launches the box; OpenClaw deployment SSHes in to install and configure. I'll ask a couple things before each agent runs.";
+    clarifies = [
+      {
+        actor: "AWS Provisioning Specialist",
+        context: "Before I authenticate to AWS and launch the EC2 instance, two things to confirm.",
+        questions: [
+          {
+            id: "region",
+            question: "Which AWS region should I provision in?",
+            options: [
+              { label: "us-east-1", description: "Virginia · default for US East" },
+              { label: "us-west-2", description: "Oregon · default for US West" },
+              { label: "eu-west-1", description: "Ireland · default for EU" },
+              { label: "ap-southeast-1", description: "Singapore · default for SEA" },
+            ],
+          },
+          {
+            id: "instanceType",
+            question: "What instance size?",
+            options: [
+              { label: "t3.micro", description: "Free tier · 1 vCPU, 1 GB RAM" },
+              { label: "t3.small", description: "$15/mo · 2 vCPU, 2 GB RAM" },
+              { label: "t3.medium", description: "$30/mo · 2 vCPU, 4 GB RAM" },
+            ],
+          },
+        ],
+      },
+      {
+        actor: "OpenClaw Deployment Specialist",
+        context: "Box is up. Two choices on how I should install OpenClaw.",
+        questions: [
+          {
+            id: "version",
+            question: "Which OpenClaw version?",
+            options: [
+              { label: "0.6.2", description: "Stable · recommended for production" },
+              { label: "0.7.0-rc", description: "Preview features · pre-release, not for prod" },
+            ],
+          },
+          {
+            id: "password",
+            question: "How should I set the admin password?",
+            options: [
+              { label: "Auto-generated", description: "Strong random password, surfaced at the end" },
+              { label: "Prompted on install", description: "You'll type it interactively over SSH" },
+            ],
+          },
+        ],
+      },
+    ];
+    reportTitle = "EC2 provisioned, OpenClaw deployed";
+    reportItems = [
+      "Launched {instanceType} in {region} · ec2-3-92-145-71.{region}.compute.amazonaws.com",
+      "Security group attached: SSH (22), OpenClaw API (8443)",
+      "SSH'd in via ephemeral keypair (rotated after deploy)",
+      "Installed OpenClaw {version} from the official tarball",
+      "Configured systemd unit · openclaw.service is active",
+      "Admin password: {password}",
+      "Quickstart guide saved to your 0G workspace",
+    ];
+  } else if (isJapan) {
     specialists = [
       { id: "TR", name: "Travel Itinerary Specialist", role: "Plan" },
       { id: "BG", name: "Budget Specialist", role: "Cost-balance" },
@@ -82,5 +149,5 @@ export function buildScript(prompt: string, mode: ModeId): TaskScript {
       { id: "CR", name: "Critic", role: "Critique" },
     ];
   }
-  return { coordinator, specialists, intro, approvalCmd, approvalActor, reportTitle, reportItems };
+  return { coordinator, specialists, intro, approvalCmd, approvalActor, clarifies, reportTitle, reportItems };
 }

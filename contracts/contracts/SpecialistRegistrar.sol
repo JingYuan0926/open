@@ -59,6 +59,20 @@ contract SpecialistRegistrar {
         string version;
     }
 
+    /// @notice One row of the per-owner registration log.
+    struct Registration {
+        string  label;
+        bytes32 node;
+    }
+
+    /// @dev Per-address list of every specialist this contract minted on
+    /// behalf of `msg.sender`. This is a *registration history*, not a
+    /// live ownership view — if the wrapped ERC1155 token is transferred
+    /// elsewhere later, the entry stays in this list. (The registrar can't
+    /// observe NameWrapper transfers, so live tracking would need a custom
+    /// token contract.)
+    mapping(address => Registration[]) private _ownedByCaller;
+
     event SpecialistRegistered(
         bytes32 indexed node,
         address indexed owner,
@@ -109,7 +123,23 @@ contract SpecialistRegistrar {
         // Hand the wrapped token to the caller.
         nameWrapper.safeTransferFrom(address(this), msg.sender, uint256(node), 1, "");
 
+        // Record into the caller's registration log so the frontend can
+        // discover it with a single view call (no event-log scan needed).
+        _ownedByCaller[msg.sender].push(Registration({ label: label, node: node }));
+
         emit SpecialistRegistered(node, msg.sender, label);
+    }
+
+    /// @notice Every specialist `owner` has ever registered through this
+    /// contract, in chronological order (oldest first). See the comment on
+    /// `_ownedByCaller` — this is registration history, not current ownership.
+    function getOwned(address owner) external view returns (Registration[] memory) {
+        return _ownedByCaller[owner];
+    }
+
+    /// @notice Number of registrations attributed to `owner`.
+    function ownedCount(address owner) external view returns (uint256) {
+        return _ownedByCaller[owner].length;
     }
 
     // ─── ERC1155 receiver hooks (needed to accept the freshly minted token) ─

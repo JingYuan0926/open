@@ -1,0 +1,49 @@
+{
+  "_format": "hh3-sol-build-info-1",
+  "id": "solc-0_8_28-59f3527f053d6c92c375a5388833d871f480a40c",
+  "solcVersion": "0.8.28",
+  "solcLongVersion": "0.8.28+commit.7893614a",
+  "compilerType": "solc",
+  "toolVersions": {
+    "hardhat": "3.4.3"
+  },
+  "userSourceNameMap": {
+    "contracts/SpecialistRegistrar.sol": "project/contracts/SpecialistRegistrar.sol"
+  },
+  "input": {
+    "language": "Solidity",
+    "settings": {
+      "evmVersion": "cancun",
+      "optimizer": {
+        "enabled": true,
+        "runs": 200
+      },
+      "outputSelection": {
+        "*": {
+          "": [
+            "ast"
+          ],
+          "*": [
+            "abi",
+            "evm.bytecode.linkReferences",
+            "evm.bytecode.object",
+            "evm.bytecode.opcodes",
+            "evm.bytecode.sourceMap",
+            "evm.deployedBytecode.immutableReferences",
+            "evm.deployedBytecode.linkReferences",
+            "evm.deployedBytecode.object",
+            "evm.deployedBytecode.opcodes",
+            "evm.deployedBytecode.sourceMap",
+            "evm.methodIdentifiers"
+          ]
+        }
+      },
+      "remappings": []
+    },
+    "sources": {
+      "project/contracts/SpecialistRegistrar.sol": {
+        "content": "// SPDX-License-Identifier: MIT\npragma solidity ^0.8.28;\n\ninterface INameWrapper {\n    function setSubnodeRecord(\n        bytes32 parentNode,\n        string calldata label,\n        address owner,\n        address resolver,\n        uint64 ttl,\n        uint32 fuses,\n        uint64 expiry\n    ) external returns (bytes32);\n\n    function getData(uint256 id)\n        external\n        view\n        returns (address owner, uint32 fuses, uint64 expiry);\n\n    function safeTransferFrom(\n        address from,\n        address to,\n        uint256 id,\n        uint256 amount,\n        bytes calldata data\n    ) external;\n\n    function isApprovedForAll(address account, address operator) external view returns (bool);\n}\n\ninterface IPublicResolver {\n    function setText(bytes32 node, string calldata key, string calldata value) external;\n}\n\n/// @title SpecialistRegistrar\n/// @notice Lets any wallet register a wrapped ENS subname under a parent\n///         domain that has approved this contract on NameWrapper. The caller\n///         pays gas; this contract mints the subname to itself, writes the\n///         specialist text records on the resolver, and transfers the wrapped\n///         ERC1155 token to the caller — all in a single transaction.\ncontract SpecialistRegistrar {\n    INameWrapper public immutable nameWrapper;\n    IPublicResolver public immutable resolver;\n    bytes32 public immutable parentNode;\n\n    string public constant KEY_AXL_PUBKEY    = \"axl_pubkey\";\n    string public constant KEY_SKILLS        = \"skills\";\n    string public constant KEY_WORKSPACE_URI = \"0g_workspace_uri\";\n    string public constant KEY_TOKEN_ID      = \"0g_token_id\";\n    string public constant KEY_PRICE         = \"price\";\n    string public constant KEY_VERSION       = \"version\";\n\n    struct Records {\n        string axlPubkey;\n        string skills;\n        string workspaceUri;\n        string tokenId;\n        string price;\n        string version;\n    }\n\n    /// @notice One row of the per-owner registration log.\n    struct Registration {\n        string  label;\n        bytes32 node;\n    }\n\n    /// @dev Per-address list of every specialist this contract minted on\n    /// behalf of `msg.sender`. This is a *registration history*, not a\n    /// live ownership view — if the wrapped ERC1155 token is transferred\n    /// elsewhere later, the entry stays in this list. (The registrar can't\n    /// observe NameWrapper transfers, so live tracking would need a custom\n    /// token contract.)\n    mapping(address => Registration[]) private _ownedByCaller;\n\n    event SpecialistRegistered(\n        bytes32 indexed node,\n        address indexed owner,\n        string label\n    );\n\n    error InvalidLabel();\n    error RegistrarNotApproved();\n\n    constructor(address _nameWrapper, address _resolver, bytes32 _parentNode) {\n        nameWrapper = INameWrapper(_nameWrapper);\n        resolver = IPublicResolver(_resolver);\n        parentNode = _parentNode;\n    }\n\n    function register(string calldata label, Records calldata records)\n        external\n        returns (bytes32 node)\n    {\n        _validateLabel(label);\n\n        (address parentOwner, , uint64 parentExpiry) = nameWrapper.getData(uint256(parentNode));\n        if (!nameWrapper.isApprovedForAll(parentOwner, address(this))) {\n            revert RegistrarNotApproved();\n        }\n\n        // Mint the wrapped subname owned by this contract. Inheriting the\n        // parent's expiry sidesteps any clamping the wrapper would do.\n        node = nameWrapper.setSubnodeRecord(\n            parentNode,\n            label,\n            address(this),\n            address(resolver),\n            0,\n            0,\n            parentExpiry\n        );\n\n        // Write text records. This contract is the subname owner, so the\n        // resolver's auth check (msg.sender == owner) passes.\n        resolver.setText(node, KEY_AXL_PUBKEY,    records.axlPubkey);\n        resolver.setText(node, KEY_SKILLS,        records.skills);\n        resolver.setText(node, KEY_WORKSPACE_URI, records.workspaceUri);\n        resolver.setText(node, KEY_TOKEN_ID,      records.tokenId);\n        resolver.setText(node, KEY_PRICE,         records.price);\n        resolver.setText(node, KEY_VERSION,       records.version);\n\n        // Hand the wrapped token to the caller.\n        nameWrapper.safeTransferFrom(address(this), msg.sender, uint256(node), 1, \"\");\n\n        // Record into the caller's registration log so the frontend can\n        // discover it with a single view call (no event-log scan needed).\n        _ownedByCaller[msg.sender].push(Registration({ label: label, node: node }));\n\n        emit SpecialistRegistered(node, msg.sender, label);\n    }\n\n    /// @notice Every specialist `owner` has ever registered through this\n    /// contract, in chronological order (oldest first). See the comment on\n    /// `_ownedByCaller` — this is registration history, not current ownership.\n    function getOwned(address owner) external view returns (Registration[] memory) {\n        return _ownedByCaller[owner];\n    }\n\n    /// @notice Number of registrations attributed to `owner`.\n    function ownedCount(address owner) external view returns (uint256) {\n        return _ownedByCaller[owner].length;\n    }\n\n    // ─── ERC1155 receiver hooks (needed to accept the freshly minted token) ─\n    function onERC1155Received(address, address, uint256, uint256, bytes calldata)\n        external\n        pure\n        returns (bytes4)\n    {\n        return this.onERC1155Received.selector;\n    }\n\n    function onERC1155BatchReceived(\n        address,\n        address,\n        uint256[] calldata,\n        uint256[] calldata,\n        bytes calldata\n    ) external pure returns (bytes4) {\n        return this.onERC1155BatchReceived.selector;\n    }\n\n    function supportsInterface(bytes4 interfaceId) external pure returns (bool) {\n        return\n            interfaceId == 0x01ffc9a7 || // ERC165\n            interfaceId == 0x4e2312e0;   // ERC1155Receiver\n    }\n\n    // ─── Label validation: 3-63 chars, lowercase letters / digits / hyphens ─\n    function _validateLabel(string calldata label) internal pure {\n        bytes memory b = bytes(label);\n        uint256 len = b.length;\n        if (len < 3 || len > 63) revert InvalidLabel();\n        for (uint256 i; i < len; ++i) {\n            bytes1 c = b[i];\n            bool ok =\n                (c >= 0x61 && c <= 0x7A) || // a-z\n                (c >= 0x30 && c <= 0x39) || // 0-9\n                c == 0x2D;                  // -\n            if (!ok) revert InvalidLabel();\n        }\n    }\n}\n"
+      }
+    }
+  }
+}

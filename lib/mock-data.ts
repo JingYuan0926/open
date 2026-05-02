@@ -2,12 +2,20 @@ import type { HostedAgent, Invocation, ExamplePrompt, Mode } from "@/types";
 
 export const HOSTED_AGENTS: HostedAgent[] = [
   {
-    id: "openclaw-setup", initials: "OC", name: "OpenClaw Setup Specialist", skill: "Project bootstrap & scaffolding",
-    description: "Bootstraps OpenClaw projects, scaffolds sample agents, runs the verification suite, and confirms the dev loop works end-to-end before handing off.",
-    status: "online", skills: ["bootstrap","openclaw","node","samples"], pricePerCall: "$0.18", rating: 4.9, callsToday: 142,
-    successRate: 98.6, earnings: "$1,284.50", owner: "you.eth", ens: "openclaw-setup.righthand.eth",
-    axlPubkey: "axl1q7v3...8fhx2k", storageUri: "0g://ws/agents/openclaw-setup/v3", inft: "iNFT #4821",
+    id: "aws-provisioning", initials: "AW", name: "AWS Provisioning Specialist", skill: "Cloud infrastructure provisioning",
+    description: "Authenticates to AWS, picks the right region and instance type with you, launches EC2 with sane security-group defaults, and surfaces the connection details for handoff.",
+    status: "online", skills: ["aws","ec2","iam","sts","security-group"], pricePerCall: "$0.42", rating: 4.92, callsToday: 76,
+    successRate: 98.9, earnings: "$1,512.00", owner: "you.eth", ens: "aws-provision.righthand.eth",
+    axlPubkey: "axl1q7v3...8fhx2k", storageUri: "0g://ws/agents/aws-provisioning/v6", inft: "iNFT #4821",
     runtime: "Node 20 · isolated VM · us-east", created: "Mar 14",
+  },
+  {
+    id: "openclaw-deploy", initials: "OC", name: "OpenClaw Deployment Specialist", skill: "OpenClaw install & remote configuration",
+    description: "SSHes into a fresh host, installs OpenClaw, configures the systemd unit, sets admin credentials, and writes a per-instance quickstart guide to your 0G workspace.",
+    status: "online", skills: ["openclaw","ssh","systemd","install","config"], pricePerCall: "$0.28", rating: 4.88, callsToday: 104,
+    successRate: 99.0, earnings: "$1,310.40", owner: "you.eth", ens: "openclaw-deploy.righthand.eth",
+    axlPubkey: "axl1f4n9...ql7w2c", storageUri: "0g://ws/agents/openclaw-deploy/v4", inft: "iNFT #4822",
+    runtime: "Node 20 · isolated VM · us-east", created: "Feb 02",
   },
   {
     id: "dependency", initials: "DP", name: "Dependency Specialist", skill: "Package & version resolution",
@@ -54,10 +62,10 @@ export const RECENT_INVOCATIONS: Invocation[] = [
 ];
 
 export const EXAMPLE_PROMPTS: ExamplePrompt[] = [
+  { prompt: "Deploy OpenClaw on a fresh EC2 instance", meta: "Cloud · Pair" },
   { prompt: "Plan my Japan trip under $1,200", meta: "Travel · Swarm" },
   { prompt: "Configure my AWS project safely", meta: "Cloud · Pair" },
   { prompt: "Troubleshoot my PC WiFi", meta: "Local · Solo" },
-  { prompt: "Install OpenClaw and run the sample agent", meta: "Dev · Swarm" },
 ];
 
 export const MODES: Mode[] = [

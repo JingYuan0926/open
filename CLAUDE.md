@@ -16,26 +16,45 @@ The subname carries six text records on the public resolver:
 
 Network: **Sepolia**. Parent: **`righthand.eth`** (wrapped in NameWrapper, owned by `0x7dEC10140F6a10DBDC0b9b4d8ba4D468B1B8E6E6`).
 
+The production publish flow on `/host` populates two of these records automatically: `0g_token_id` from the iNFT minted just-in-time on 0G Galileo, and `0g_workspace_uri` from that iNFT's chainscan URL (`https://chainscan-galileo.0g.ai/nft/<contract>/<tokenId>`). The `/ens-test` page is the bare-wallet harness that lets you write whatever you like into all six.
+
 ## On-chain components
 
 | contract                | address (Sepolia)                              | role                                                      |
 |-------------------------|------------------------------------------------|-----------------------------------------------------------|
 | ENS NameWrapper         | `0x0635513f179D50A207757E05759CbD106d7dFcE8`   | wraps ENS names as ERC-1155, mints subnames               |
 | ENS Public Resolver     | `0xE99638b40E4Fff0129D56f03b55b6bbC4BBE49b5`   | stores `text(node, key)` records                          |
-| `SpecialistRegistrar`   | `0x03e69a73090A7E8392bC54BC24316a326020B128`   | one-tx subname mint + records + transfer to caller       |
+| `SpecialistRegistrar` (v2) | `0xE8E40daf718010e3B5d07cd4A0b22333757D77Dd` | one-tx subname mint + records + transfer to caller; on-chain `getOwned(address)` mapping |
 
-The parent owner has called `NameWrapper.setApprovalForAll(SpecialistRegistrar, true)`, so the registrar can mint subnames of `righthand.eth` on anyone's behalf. If you redeploy the contract you must re-run that approval (see `contracts/scripts/approve-registrar.ts`).
+Plus on **0G Galileo testnet (chainId 16602)**:
 
-## Two registration paths
+| contract           | address (0G Galileo)                           | role                                            |
+|--------------------|------------------------------------------------|-------------------------------------------------|
+| `SPARKiNFT`        | `0xe457A01ce326977Ed7A56a02a9cA8a9C4468074A`   | ERC-721 iNFT minted before each ENS register   |
 
-The page `/ens-test` exposes both via a "Signer" radio. They share the records form and the read panel.
+The parent owner has called `NameWrapper.setApprovalForAll(SpecialistRegistrar, true)` against the v2 contract, so the registrar can mint subnames of `righthand.eth` on anyone's behalf. If you redeploy the contract you must re-run that approval (see `contracts/scripts/approve-registrar.ts`). The previous v1 deployment at `0x03e6…0B128` is still approved by the parent owner — older subnames registered through it still work, they're just not visible to v2's `getOwned` view.
 
-### A. Frontend wallet via `SpecialistRegistrar` (default)
+## Registration paths
+
+Three flows exist, in increasing order of "how the product is meant to be used":
+
+### A. Frontend wallet via `SpecialistRegistrar` (the dev harness — `/ens-test`)
 
 - Any connected wallet calls `register(label, records)` on the registrar.
-- The contract `setSubnodeRecord(parent, label, address(this), resolver, 0, 0, parentExpiry)`, then 6× `setText`, then `safeTransferFrom(this, msg.sender, …)`. **One signature, one tx, caller pays gas, caller becomes owner.**
-- Hook: [`lib/ens/useRegisterSpecialist.ts`](lib/ens/useRegisterSpecialist.ts) — `useWriteContract` + `useWaitForTransactionReceipt`. Step machine: `idle → registering → confirming → success | error`.
-- Status hook: [`lib/ens/useParentStatus.ts`](lib/ens/useParentStatus.ts) — reads `isWrapped`, `ownerOf`, and `isApprovedForAll(parentOwner, SPECIALIST_REGISTRAR_ADDRESS)`. `canRegister` is true iff parent is wrapped AND registrar is approved.
+- The contract `setSubnodeRecord(parent, label, address(this), resolver, 0, 0, parentExpiry)`, then 6× `setText`, then `safeTransferFrom(this, msg.sender, …)`, then pushes the registration into `_ownedByCaller[msg.sender]`. **One signature, one tx, caller pays gas, caller becomes owner.**
+- Hooks live in [`lib/ens/SpecialistRegistrar.ts`](lib/ens/SpecialistRegistrar.ts):
+  - `useRegisterSpecialist` — `useWriteContract` + `useWaitForTransactionReceipt`. Step machine: `idle → registering → confirming → success | error`.
+  - `useParentStatus` — reads `isWrapped`, `ownerOf`, and `isApprovedForAll(parentOwner, SPECIALIST_REGISTRAR_ADDRESS)`. `canRegister` is true iff parent is wrapped AND registrar is approved.
+  - `useMySpecialists` — calls v2's `getOwned(address)` for the connected wallet, then batches the six `text(node, key)` reads through Multicall3. Drives the "Your specialists" grid in the host dashboard. Wrapped in `useQuery` with a 30 s `staleTime`.
+
+### A2. Production publish — iNFT-then-ENS (the host dashboard — `/host`)
+
+The [`AgentBuilderForm`](components/host/AgentBuilderForm.tsx) on `/host` is the canonical "publish a new specialist" UI. It runs **a server-side iNFT mint first, then the wallet's ENS register** so the user signs only once (Sepolia):
+
+1. **Mint iNFT** (server-signed). POST `/api/0g/mint-inft` with `{ to: connectedAddress, botId: slug, domainTags: skill, serviceOfferings: desc }`. The server signs `SPARKiNFT.mintAgent(...)` on 0G Galileo with `0G_PRIVATE_KEY` and returns `{ tokenId, txHash }`. This works because `mintAgent` has no auth modifier; user pays no 0G gas and never switches chain.
+2. **Register ENS** (user signs). The form then calls `useRegisterSpecialist().register(slug, { …, tokenId, workspaceUri: inftUrl(tokenId) })` where `inftUrl(id) = "https://chainscan-galileo.0g.ai/nft/" + SPARKINFT_ADDRESS + "/" + id`. The user's wallet signs the Sepolia tx, the contract pushes into `_ownedByCaller[msg.sender]`, and `useMySpecialists` picks it up on the next read.
+
+Card-header badge tracks the combined state: `Draft → Minting iNFT → Awaiting signature → Confirming → Registered` (or `Failed`). There is no `0g_token_id` input field — it is derived from the mint's receipt event.
 
 ### B. Server private-key flow (legacy, still wired)
 
@@ -54,29 +73,38 @@ The page `/ens-test` exposes both via a "Signer" radio. They share the records f
 
 ```
 contracts/
-  contracts/SpecialistRegistrar.sol          # one-tx registrar, ERC1155Receiver
+  contracts/SpecialistRegistrar.sol          # one-tx registrar, ERC1155Receiver,
+                                             # _ownedByCaller mapping + getOwned/ownedCount views
   ignition/modules/SpecialistRegistrar.ts    # Ignition deploy module
   scripts/approve-registrar.ts               # parent owner → setApprovalForAll
 lib/
   networkConfig.ts                           # chains + ENS addresses + parent domain
+  sparkinft-abi.ts                           # SPARKINFT_ADDRESS (0G Galileo) + ABI
   abis/
     NameWrapper.ts                           # subset: setSubnodeRecord, ownerOf, isWrapped, set/isApprovedForAll
     PublicResolver.ts                        # subset: setText, text, multicall
-    SpecialistRegistrar.ts                   # register(label, Records), parentNode, event
+    SpecialistRegistrar.ts                   # register, getOwned, ownedCount, parentNode, event
   ens-registry.ts                            # server reads + private-key writes + shared encoders
   ens/
-    useParentStatus.ts                       # wagmi: parent + registrar approval
-    useRegisterSpecialist.ts                 # wagmi: contract.register() with step machine
+    SpecialistRegistrar.ts                   # wagmi hooks: useParentStatus + useRegisterSpecialist + useMySpecialists
   providers.tsx                              # RainbowKit + wagmi + react-query wrapper
 components/
   Navbar.tsx                                 # ConnectButton.Custom with useEnsName/useEnsAvatar
+  layout/
+    HostDashboard.tsx                        # /host overview — uses useMySpecialists for "Your specialists" grid
+    TopBar.tsx                               # has a compact RainbowKit ConnectButton (replaces old static pill)
+  host/
+    AgentBuilderForm.tsx                     # production publish UI: server-mint iNFT → wallet ENS register
 pages/
   _app.tsx                                   # wraps Component in <Providers>
-  ens-test.tsx                               # mode toggle + register form + read form
+  ens-test.tsx                               # bare-wallet harness: mode toggle + register form + read form
+  host.tsx                                   # AppShell + HostDashboard
   api/ens/
     status.ts                                # server-mode registrar status
     register-specialist.ts                   # server-mode write (private key)
     read-specialist.ts                       # public read (no key)
+  api/0g/
+    mint-inft.ts                             # server-side mintAgent on 0G Galileo (uses 0G_PRIVATE_KEY)
 ```
 
 ## Required environment (`.env.local`)
@@ -87,6 +115,7 @@ pages/
 | `NEXT_PUBLIC_SEPOLIA_RPC_URL`         | client (wagmi)       | wallet transport / wagmi reads                           |
 | `NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID`| client               | optional; injected wallets work without it               |
 | `ENS_REGISTRAR_PRIVATE_KEY`           | server only          | required for server-mode signing; not used by wallet mode |
+| `0G_PRIVATE_KEY`                      | server only          | signs `SPARKiNFT.mintAgent` on 0G Galileo for `/api/0g/mint-inft` (and the rest of `pages/api/0g/*`). Square-bracket env access only — name starts with a digit |
 | `SEPOLIA_RPC_URL`                     | server fallback      | used by `lib/ens-registry.ts` viem `publicClient`        |
 | `ENS_PARENT_DOMAIN`                   | server fallback      | only consulted if `NEXT_PUBLIC_ENS_PARENT_DOMAIN` unset  |
 
@@ -96,15 +125,16 @@ For the contracts package, `contracts/.env` needs `SEPOLIA_RPC_URL` and `SEPOLIA
 
 ## Redeploy procedure
 
-The contract is approved on NameWrapper by address. If you redeploy, the previous approval is meaningless — the new contract instance must be re-approved.
+The contract is approved on NameWrapper by address. If you redeploy, the previous approval is meaningless — the new contract instance must be re-approved. Ignition keeps a per-deployment journal under `contracts/ignition/deployments/chain-11155111/`, so always pass a fresh `--deployment-id` or it'll think the existing artifact is still current and skip the deploy.
 
 1. Edit the contract.
 2. Compile: `cd contracts && ./node_modules/.bin/hardhat compile`.
-3. Compute parentNode: `node -e "import('viem').then(v=>console.log(v.namehash('righthand.eth')))"`.
+3. Compute parentNode: `node -e "import('viem').then(v=>console.log(v.namehash('righthand.eth')))"`. For `righthand.eth` it's `0xfecdb4e9ca322d8347b5f7d2d7e087c7ff92e026e4b1b8e15aaa23e71af7f4f4`.
 4. Deploy:
    ```bash
    yes | ./node_modules/.bin/hardhat ignition deploy ignition/modules/SpecialistRegistrar.ts \
      --network sepolia \
+     --deployment-id specialist-registrar-vN \
      --parameters '{"SpecialistRegistrarModule":{"parentNode":"0x..."}}'
    ```
 5. Approve from parent owner: `set -a && source .env && set +a && REGISTRAR_ADDRESS=0x... npx tsx scripts/approve-registrar.ts`.
@@ -119,7 +149,8 @@ If the parent domain itself changes you also need to redeploy — `parentNode` i
 - **Subname expiry inherits parent.** The contract passes `parentExpiry` to `setSubnodeRecord`; if the parent's registration lapses, all subnames lapse with it.
 - **Wallet mode requires `NEXT_PUBLIC_ENS_PARENT_DOMAIN` to match the contract's `parentNode`.** They're independent values today — keep them in sync, or move to reading `parentNode` off-chain via `useReadContract` and stop relying on the env var.
 - **ENS resolution uses `ENS_CHAIN_ID` (Sepolia), not mainnet.** `useEnsName`/`useEnsAvatar` in [Navbar.tsx](components/Navbar.tsx) only resolve names registered on Sepolia ENS. Drop the `chainId` arg or add `mainnet` to `chains` if you want mainnet primary names.
-- **Discovery is event-based.** The contract emits `SpecialistRegistered(node, owner, label)` but does not store an enumerable list. To list all specialists: `eth_getLogs` on the registrar, or the ENS subgraph for "subdomains of righthand.eth".
+- **Per-owner discovery is on-chain in v2; cross-owner discovery still isn't.** v2 stores `mapping(address => Registration[]) _ownedByCaller` and exposes `getOwned(address)` / `ownedCount(address)` — `useMySpecialists` calls these directly, no event scan. But this is **registration history**, not live ownership: if a wrapped subname is later transferred elsewhere on NameWrapper, the registrar can't observe it and the entry stays in the list. To enumerate every specialist across every owner you still need to scan `SpecialistRegistered` logs (or use the ENS subgraph for "subdomains of righthand.eth").
+- **iNFT mint is server-signed.** `/api/0g/mint-inft` uses `0G_PRIVATE_KEY` to call `SPARKiNFT.mintAgent(to=connectedAddress, …)` on 0G Galileo, so the user signs only the Sepolia register tx — no chain switch, no 0G gas paid by the user. Works because `mintAgent` has no auth modifier; anyone can mint to any address. To make the user sign the mint themselves you'd need to add chain 16602 to wagmi's `chains` and switch via `useSwitchChain` twice.
 - **Don't trust string-equality on addresses.** Always lower-case both sides before comparing (`a.toLowerCase() === b.toLowerCase()`); checksummed strings differ otherwise.
 
 ---
@@ -160,7 +191,7 @@ The parent owner (`0x7dEC1014…`) has called `NameWrapper.setApprovalForAll(Tas
 | file                                                       | role                                                                                                                            |
 |------------------------------------------------------------|---------------------------------------------------------------------------------------------------------------------------------|
 | [`pages/tasks.tsx`](pages/tasks.tsx)                       | post-task form + paginated task cards (status, budget, deadline, slots, signed-on list) + per-role buttons + withdraw card     |
-| [`lib/tasks/useTaskMarket.ts`](lib/tasks/useTaskMarket.ts) | `useTasks` (batched `useReadContracts`), `usePostTask`, `useSignOnTask`, `useCompleteTask`, `useCancelTask`, `useWithdraw`, `useWithdrawable` |
+| [`lib/ens/TaskMarket.ts`](lib/ens/TaskMarket.ts)           | `useTasks` (batched `useReadContracts`), `usePostTask`, `useSignOnTask`, `useCompleteTask`, `useCancelTask`, `useWithdraw`, `useWithdrawable` |
 | [`lib/abis/TaskMarket.ts`](lib/abis/TaskMarket.ts)         | ABI + `TASK_STATUS` enum (`Open=0, Completed=1, Cancelled=2`)                                                                   |
 
 Each task card links its ENS name to `/api/ens/read-specialist?name=task-{id}.righthand.eth` so the resolver records can be inspected immediately.
@@ -172,12 +203,14 @@ contracts/
   contracts/TaskMarket.sol               # escrow + per-task subname + status updates
   ignition/modules/TaskMarket.ts         # Ignition deploy module (parentNode param)
 lib/
-  abis/TaskMarket.ts
-  tasks/
-    useTaskMarket.ts
+  abis/TaskMarket.ts                     # ABI + TASK_STATUS enum
+  ens/
+    TaskMarket.ts                        # wagmi hooks: useTasks + usePostTask + useSignOnTask + useCompleteTask + useCancelTask + useWithdraw + useWithdrawable
 pages/
   tasks.tsx                              # /tasks UI
 ```
+
+**Convention:** every smart contract has one ABI file (`lib/abis/<Contract>.ts`) and one wagmi-hooks file (`lib/ens/<Contract>.ts`). Co-locate all hooks for a contract in its file; only split a hook into its own file once it grows large enough to justify it (none currently do).
 
 `TASK_MARKET_ADDRESS` is hardcoded in `lib/networkConfig.ts` (deployment artifact, same convention as `SPECIALIST_REGISTRAR_ADDRESS`).
 
@@ -293,116 +326,313 @@ scripts/
 
 ---
 
-# Phase 2a — MCP execution via AXL (working)
+# Phase 2a — local browser demo (working) + AXL/MCP routing (built, not yet wired)
 
-Phase 1 proved AXL **transport**. Phase 2a proves AXL **execution**: an agent on Mac B/C invokes a tool on Mac A (the user) via AXL's built-in `/mcp/<peer>/<service>` route. Each call shows a y/n approval prompt on the user's terminal before any action runs. Demo target: `agent-b` provisions an EC2 instance on the user's AWS account, then `agent-c` SSHes in and installs nanoclaw — both via MCP, both gated by user approval.
+Phase 1 proved transport. Phase 2a is the **demo of what an AI agent does on the user's machine**: walks AWS console pages → user signs in → continues to EC2 launch wizard. This currently runs **standalone on the user's machine** (no AXL involved). The next step is wiring it as an MCP service so a remote agent can trigger it via AXL.
 
-## Architecture
+## What's working today (standalone, on the user's machine)
+
+The demo is a sequence of URL opens in the user's default Chrome, paced with auto-advance (browser does fast pages) and a pause-for-Enter where the user actually has to act (typing AWS credentials).
+
+### npm scripts (all in `scripts/` as `tsx` files)
+
+| command | what it does |
+|---------|--------------|
+| `npm run test:browser` | self-contained 5-URL walk. Step 2 pauses for credentials; rest auto-advance. Pure `cmd.exe /c start chrome <url>` (or `open` on macOS). No setup. |
+| `npm run demo:before` | half 1: AWS landing → sign-in URL. Pauses on sign-in for user to type credentials, exits when they hit Enter. |
+| `npm run demo:after` | half 2: EC2 dashboard → launch wizard → Instances dashboard. 7s between each. Run after `demo:before` returns. |
+| `npm run demo:cdp` | full flow with auto-click. Connects to debug Chrome, navigates by CDP, clicks `#root_account_signin`, polls URL until sign-in detected, continues. Requires `chrome:debug` first. |
+| `npm run demo:popup` | walks 4 URLs then spawns a separate Windows Terminal / Terminal.app window that runs `demo:cli-only` (the SDK execution part) — "hacker movie" two-window aesthetic. |
+| `npm run demo:final` | **the working end-to-end stage demo (macOS)**: walks 3 EC2 console pages, then `osascript` spawns Terminal.app running `demo:cli-aws`. Uses pure `aws` CLI + system `ssh` — no `@aws-sdk` or `ssh2` deps required. |
+| `npm run demo:cli-aws` | the AI-execution half: `aws sts get-caller-identity` → ensure keypair (`openclaw-demo-key`, PEM at `axl/openclaw-demo-key.pem`) → ensure SG (`openclaw-demo-sg`, SSH 22 from anywhere) → resolve latest AL2023 AMI via SSM → `run-instances` (t3.micro) → wait running → wait sshd 30s → `ssh -tt` interactive session that prints `/etc/motd`, fakes a `[ec2-user@host ~]$` prompt before each command, installs `git nodejs npm`, `git clone https://github.com/derek2403/openclaw.git`, drops `.env` (base64-piped from the local Mac's `.env`), runs `bash start.sh`. Designed to be spawned by `demo:final` but standalone-runnable. |
+| `npm run chrome:debug` | one-time per session: launches Chrome with `--remote-debugging-port=9222` + dedicated user-data-dir (`C:\temp\rh-demo-chrome` on WSL/Win, `~/.rh-demo-chrome` on macOS). User logs into AWS once in this Chrome; cookies persist. |
+| `npm run capture-urls` | scrapes fresh AWS OAuth + sign-in URLs from the running debug Chrome via CDP. Prints in shell-eval format. |
+
+### Browser opener: cross-platform
+
+[`axl/mcp-servers/aws-helpers/browser.ts`](axl/mcp-servers/aws-helpers/browser.ts) — single `openUrl(url)` that detects platform:
+- macOS: `open -a "Google Chrome" <url>`
+- WSL / Win32: `cmd.exe /c start "" chrome <url>` (uses Windows App Paths registry to find Chrome)
+- Linux desktop: `google-chrome <url>` (or `xdg-open` with `BROWSER=default`)
+
+Override with `BROWSER=msedge|firefox|default` env var.
+
+### CDP client (no Playwright)
+
+[`scripts/cdp-helper.ts`](scripts/cdp-helper.ts) — minimal Chrome DevTools Protocol client over `WebSocket` (Node 21+ built-in, no `ws` package needed). Methods: `connect()`, `navigate(url)`, `click(selector)`, `waitForSelector(selector)`, `evaluate(expr)`, `getCurrentUrl()`, `getNavigationHistory()`. ~120 lines total. Used by `demo:cdp` and `capture-urls`.
+
+### URL handling
+
+The default sign-in URL is `https://signin.aws.amazon.com/console` (generic — AWS regenerates a fresh PKCE code_challenge on every visit). Don't try to hardcode the long `/oauth?...&code_challenge=...` deep-links: they're single-use, AWS invalidates them after one OAuth round-trip, every reuse returns `400 invalid_request`. This bit us multiple times during dev.
+
+If you want the actual deep-link URLs displayed for narrative, run `eval $(npm run --silent capture-urls)` to populate `SIGNIN_OAUTH_URL` / `SIGNIN_FORM_URL` env vars from the live AWS session, then run `npm run test:browser`.
+
+### Demo flow (default `test:browser` — no setup needed)
 
 ```
-agent-b/c Mac                       user's Mac (4 procs)                   AWS / browser
-─────────────                       ─────────────────────                  ──────────────
-
-$ npm run mcp:demo:launch                                                      
-  │                                                                            
-scripts/mcp-call.ts                                                            
-  │                                                                            
-  ├─ POST :9002/mcp/<u-pk>/aws ──► AXL node ─Yggdrasil─► AXL on user           
-                                                              │                
-                                                              ▼                
-                                                        mcp-router.py :9003    
-                                                              │                
-                                                              ▼                
-                                                  axl/mcp-servers/aws.ts :9100 
-                                                              │                
-                                                              ├─ permission prompt (y/n)
-                                                              │                
-                                                              ├──► child_process `open <url>` ──► default browser → AWS console
-                                                              ├──► @aws-sdk/client-ec2     ──► EC2 RunInstances
-                                                              └──► ssh2 exec                ──► EC2 instance
+1. https://aws.amazon.com/free/                                  [auto, 7s]
+2. https://signin.aws.amazon.com/console                          [WAIT]   ← user signs in
+3. https://us-east-1.console.aws.amazon.com/console/home?…#       [auto, 7s]
+4. https://us-east-1.console.aws.amazon.com/ec2/home?…#Home:      [auto, 7s]
+5. https://us-east-1.console.aws.amazon.com/ec2/home?…#LaunchInstances:   [done]
 ```
 
-## MCP service: `aws` (4 tools)
+After step 5, the launch-wizard page is open in Chrome. The narrative is "AI navigated to the wizard; instead of clicking through it manually, it'll call AWS RunInstances directly via SDK." That SDK call lives in `demo:cli-only` / `test:aws launch` (currently parked — see below).
 
-| tool | impl | what user sees |
-|------|------|----------------|
-| `open_console` | `open` shells out to user's default browser with hardcoded launch-wizard URL | AWS launch-instance wizard appears |
-| `launch_instance({name?})` | `@aws-sdk/client-ec2` `RunInstances` (AMI `ami-0c02fb55…`, t2.micro, sg `nanoclaw-demo-sg` opens 22, key `nanoclaw-key`) | terminal prints `{instance_id, public_ip}` after ~30s |
-| `show_in_console({instance_id})` | `open <instance-detail-URL>` (URL templated with the new ID) | browser navigates to the instance row |
-| `install_nanoclaw({instance_id, public_ip})` | `ssh2` SSH (key `axl/nanoclaw-key.pem`) → run `$NANOCLAW_INSTALL_CMD` (default: placeholder echo) | install output streamed to terminal |
+## What's built but not currently runnable
 
-URLs in [`axl/mcp-servers/aws-helpers/urls.ts`](axl/mcp-servers/aws-helpers/urls.ts) — swap deep-links for whatever console pages the demo narrative needs (each becomes its own approve-able call).
+[`axl/mcp-servers/aws.ts`](axl/mcp-servers/aws.ts), [`aws-helpers/ec2.ts`](axl/mcp-servers/aws-helpers/ec2.ts), [`aws-helpers/ssh.ts`](axl/mcp-servers/aws-helpers/ssh.ts) and [`scripts/test-aws-direct.ts`](scripts/test-aws-direct.ts) / [`scripts/demo-cli-only.ts`](scripts/demo-cli-only.ts) / [`scripts/demo-full.ts`](scripts/demo-full.ts) implement the SDK side: real EC2 RunInstances + ssh2 install + terminate. They imported `@aws-sdk/client-ec2` + `ssh2` which were dropped from `package.json`. To re-enable:
 
-## Request shape (verified against gensyn-ai/axl)
+```bash
+npm install --legacy-peer-deps @aws-sdk/client-ec2@^3 ssh2@^1.16 @types/ssh2
+```
+
+Plus AWS access key in `~/.aws/credentials`, EC2 keypair `nanoclaw-key` saved as `axl/nanoclaw-key.pem` (chmod 600). Defaults: us-east-1, t2.micro, AMI `ami-0c02fb55956c7d316`.
+
+**The CLI-based path (`demo:final` / `demo:cli-aws`) is the working alternative** — same outcome (real EC2 launch + remote install) without any `@aws-sdk` or `ssh2` deps, since it shells out to the system `aws` and `ssh` binaries. If you only need the demo flow, prefer this path. If you need programmatic SDK access from inside the AXL/MCP server (e.g. for `aws.ts` to be reachable over the mesh), you still need to reinstall the SDK deps as above.
+
+### Gotchas for `demo:cli-aws`
+
+- **Required IAM permissions.** The IAM user needs `AmazonEC2FullAccess` + `AmazonSSMReadOnlyAccess` (or a custom policy with `ec2:CreateKeyPair`, `ec2:RunInstances`, `ec2:Describe*`, `ec2:CreateSecurityGroup`, `ec2:AuthorizeSecurityGroupIngress`, `ec2:CreateTags`, `ec2:TerminateInstances`, `ssm:GetParameter`). Without SSM access the AMI lookup fails.
+- **AWS Free Plan only allows specific instance types.** New accounts (post-2024 Free Plan) reject `t2.micro` with `InvalidParameterCombination`. The script defaults to `t3.micro`. If even that's rejected, run `aws ec2 describe-instance-types --filters Name=free-tier-eligible,Values=true --region us-east-1` to see what's allowed.
+- **Default VPC must exist** in the chosen region. `aws ec2 describe-vpcs --filters Name=isDefault,Values=true --region us-east-1` should return a VPC. If it doesn't, the script needs `--subnet-id`.
+- **`.env` is base64-piped, not scp'd.** The local `.env` is read on Mac, base64-encoded, and inlined inside the install script's bash payload. Decoded on EC2, written to `~/openclaw/.env`, chmod 600. Sidesteps shell-escape issues with newlines/quotes/specials in secrets. Logs never contain the decoded content because the install script runs over an interactive `ssh -tt` session.
+- **Keypair recovery.** If the AWS keypair `openclaw-demo-key` exists but the local PEM at `axl/openclaw-demo-key.pem` is missing, the script aborts (it can't re-mint a PEM for an existing key). Recover with `aws ec2 delete-key-pair --key-name openclaw-demo-key --region us-east-1` then re-run.
+- **Long-running `start.sh` keeps SSH open.** The interactive `ssh -tt` doesn't return until the remote command exits. If `start.sh` runs a server in the foreground, the popup terminal stays connected — that's good for the demo (audience sees the server log live). To detach cleanly: type `~.` in the SSH session, or have `start.sh` background its server with `nohup … &`.
+
+## What's parked, ready to wire (the AXL/MCP integration)
+
+The full Phase 2a vision was: a remote agent on Mac B (`agent-b`) calls AXL's `/mcp/<user-peer>/aws` endpoint → AXL forwards through Yggdrasil to user's Mac → vendored `mcp-router.py` (port 9003) dispatches → `aws.ts` MCP server (port 9100) prompts approval → runs the demo flow.
+
+These pieces exist:
+- [`axl/mcp-router.py`](axl/mcp-router.py) — vendored verbatim from `gensyn-ai/axl/integrations/mcp_routing/`
+- [`axl/mcp-servers/aws.ts`](axl/mcp-servers/aws.ts) — Express MCP service exposing 4 tools (`open_console`, `launch_instance`, `show_in_console`, `install_nanoclaw`)
+- [`axl/mcp-servers/permission.ts`](axl/mcp-servers/permission.ts) — terminal y/n approval gate (serialised via promise chain so concurrent calls don't race on stdin)
+- [`scripts/mcp-call.ts`](scripts/mcp-call.ts) — sender CLI: `npm run mcp:call -- <role> <svc> <tool> '<args>'`
+- [`scripts/setup-axl.sh`](scripts/setup-axl.sh) already adds `router_addr` + `router_port=9003` to `node-config.json` for the user role, and pip-installs `aiohttp`
+- [`scripts/axl-start.sh`](scripts/axl-start.sh) already background-starts `mcp-router.py` + `aws.ts` on the user role and monitors them in the polling loop
+
+What's missing for the AXL integration to work:
+1. The aforementioned `@aws-sdk/client-ec2` + `ssh2` deps so `aws.ts` compiles
+2. Replace the hardcoded `aws.ts` tools with calls into the **standalone demo scripts** above (so the AXL-routed flow is the same browser walk + SDK launch + SSH install we already have working locally) — i.e. pivot `aws.ts`'s tool implementations from "do the work directly" to "spawn `tsx scripts/demo-before.ts` etc. as child processes"
+3. Confirm the AXL-side wiring on a real 3-Mac mesh: agent-b runs `mcp-call user aws walk_through` → user's Mac shows approval prompt + runs the demo
+
+### Verified MCP request shape (from gensyn-ai/axl/integrations/mcp_routing/mcp_router.py)
 
 Sender:
 ```
 POST http://127.0.0.1:9002/mcp/<peer-pubkey>/aws
-{ "jsonrpc":"2.0", "id":1, "method":"tools/call", "params":{"name":"launch_instance","arguments":{"name":"…"}} }
+{ "jsonrpc":"2.0", "id":1, "method":"tools/call", "params":{"name":"...","arguments":{...}} }
 ```
 
-AXL forwards to `router_addr:router_port` (`http://127.0.0.1:9003`) as:
+AXL forwards to `router_addr:router_port` (`http://127.0.0.1:9003/route`):
 ```
-POST /route
-{ "service":"aws", "request": <jsonrpc>, "from_peer_id":"<28hex>" }
-```
-
-Router POSTs the inner `request` body to `aws.ts /mcp` with headers `X-From-Peer-Id`, `X-Service`. `aws.ts` resolves peer→role via `matchesPeer()` (the same X-From-Peer-Id truncation handler from Phase 1), prompts approval, runs the tool, returns:
-```
-{ "jsonrpc":"2.0", "id":1, "result":{ "content":[{"type":"text","text":"<JSON>"}] } }
+{ "service":"aws", "request": <jsonrpc-above>, "from_peer_id":"<28hex>" }
 ```
 
-Router wraps as `{response: <jsonrpc>, error: null}` and propagates back through AXL to the sender.
+Router POSTs the inner `request` body to the registered service's `/mcp` endpoint with headers `X-From-Peer-Id` (use `matchesPeer()` from `axl/axl.ts` — header is truncated to ~28 hex), `X-Service`. Service prompts approval, runs the tool, returns:
+```
+{ "jsonrpc":"2.0", "id":1, "result":{ "content":[{"type":"text","text":"<json-stringified result>"}] } }
+```
+
+Router wraps as `{response: <jsonrpc>, error: null}` and the response propagates back through AXL to the sender.
+
+---
+
+# Telegram bot — OpenClaw on 0G Compute (Phase 2a EC2 payload)
+
+The standalone Telegram bot that gets deployed onto the user's EC2 box once `launch_instance` succeeds. Long-polls Telegram, routes inbound messages through 0G Compute Network's `qwen-2.5-7b-instruct` provider, returns replies with provider/tx hyperlinks in an HTML footer.
+
+Lives in [`telegram-bot/`](telegram-bot/) as its own npm project — designed to clone+run on any Linux box with Node 20+, no parent-repo deps.
+
+## Why this matters
+
+Phase 2a's narrative is "agents on Mac B/C deploy a working AI service onto the user's EC2." Until this bot existed, the demo ended at "EC2 instance is running" — abstract. With the bot installed, the user opens Telegram on their phone, finds **@RightHandAI_OpenClaw**, and chats with an LLM that lives on their just-launched EC2 and pays for inference from a 0G testnet ledger — concrete, visible, real.
+
+## Files
+
+```
+telegram-bot/
+  bot.ts            # grammy long-poll → 0G compute (qwen-2.5-7b) → reply.
+                    # HTML footer with provider-address explorer link
+                    # + on-chain ack tx hash when one fires.
+                    # In-memory per-chat history (10 turns), /start /reset /help.
+  start.sh          # OpenClaw-style launcher: red lobster banner ("EXFOLIATE!"),
+                    # auto-installs deps on first run, exec npm start.
+  check.ts          # dev utility: prints wallet balance, ledger,
+                    # provider list with prices, per-provider sub-account state.
+                    # Run with: `./node_modules/.bin/tsx check.ts`
+  package.json      # CommonJS Node 20+, deps:
+                    #   grammy + @0glabs/0g-serving-broker + ethers + dotenv
+  tsconfig.json     # CommonJS / Node resolution (NOT NodeNext — see gotchas)
+  .env.example      # template — BOT_TOKEN + 0G_PRIVATE_KEY
+  .gitignore        # node_modules, .env, *.log
+  README.md         # setup, PM2/systemd recipes, troubleshooting
+```
+
+## How it integrates with Phase 2a
+
+The bot lives at [github.com/derek2403/openclaw](https://github.com/derek2403/openclaw) as its own repo (extracted from `telegram-bot/` for distribution). The **working integration path is `demo:cli-aws`** ([`scripts/demo-cli-aws.ts`](scripts/demo-cli-aws.ts)), which does the equivalent of:
+
+```bash
+sudo dnf install -y git nodejs npm
+git clone https://github.com/derek2403/openclaw.git ~/openclaw
+cd ~/openclaw
+cat <<'EOF' > .env   # base64-piped from the local Mac's .env
+BOT_TOKEN=…
+0G_PRIVATE_KEY=…
+EOF
+chmod 600 .env
+bash start.sh
+```
+
+…all over a single `ssh -tt` session that streams the remote AL2023 motd + a faked `[ec2-user@host ~]$ <cmd>` prompt before each command, so the audience watches it run live in the popup terminal. The `.env` is base64-encoded on the Mac, inlined into the install script, and decoded on EC2 — no scp, no leaked secrets in logs.
+
+The `install_telegram_bot` MCP tool in [`axl/mcp-servers/aws.ts`](axl/mcp-servers/aws.ts) (still to be wired) is the AXL-routed equivalent: same SSH calls, but invoked as a JSON-RPC tool over the AXL mesh + MCP router instead of from a local Mac terminal. When it's wired, it should `child_process.spawn('tsx', ['scripts/demo-cli-aws.ts'])` rather than re-implementing the SSH dance.
+
+After install, the user opens [t.me/RightHandAI_OpenClaw](https://t.me/RightHandAI_OpenClaw), sends `/start`, and chats. Every reply is qwen inference billed against the 0G ledger.
+
+## 0G Compute integration
+
+Mirrors the `callVia0GCompute()` function in [`pages/api/0g/inft-infer.ts`](pages/api/0g/inft-infer.ts) exactly — same broker setup (`createZGComputeNetworkBroker(wallet)`), same env var (`0G_PRIVATE_KEY`), same provider call sequence. The bot uses **only the qwen-2.5-7b provider** because it's the only chat model registered on 0G testnet right now (run `tsx check.ts` to confirm).
+
+Per-message flow:
+1. `broker.inference.acknowledged(provider)` — read, free
+2. `broker.inference.acknowledgeProviderSigner(provider)` — **on-chain tx** on first call to a new provider; cached after
+3. `broker.inference.getServiceMetadata(provider)` — read endpoint + model name
+4. `broker.inference.getRequestHeaders(provider, message)` — signs request off-chain
+5. `fetch(endpoint + "/chat/completions", { headers })` — actual inference (OpenAI-compatible)
+6. `broker.inference.processResponse(provider, chatID, reply)` — billing settle (silent on failure)
+
+The bot hooks `wallet.sendTransaction` to capture step 2's tx hash and surfaces it as a hyperlink in the reply footer when present.
+
+## Boot UI
+
+The branded boot is in two layers:
+
+1. **`start.sh`** prints the red-bordered lobster banner before launching node.
+2. **`bot.ts`** then runs a 5-step staged init that runs *real* on-chain probes and prints each as a dotted leader line:
+   ```
+   [ 1/5 ]  ▸ loading 0g compute broker .................  ✓
+   [ 2/5 ]  ▸ probing 0g testnet ........................  ✓ gas 12.85 0G · chain 16602
+   [ 3/5 ]  ▸ reading ledger ............................  ✓ 7.49 0G allocated
+   [ 4/5 ]  ▸ acknowledging providers ...................  ✓ qwen-2.5-7b-instruct
+   [ 5/5 ]  ▸ pairing telegram channel ..................  ✓ @RightHandAI_OpenClaw
+   ```
+3. Finishes with `EXFOLIATE! OpenClaw is online.` Shutdown gets `─ shutting down — the lobster sleeps 🦞`.
+
+The vibe is borrowed from [github.com/openclaw/openclaw](https://github.com/openclaw/openclaw) (their tagline, lobster mascot, CLI-first aesthetic).
+
+## Gotchas
+
+- **0G SDK ESM build is broken** as of `@0glabs/0g-serving-broker@0.7.8` — exports a missing `'C'` constant. The bot is CommonJS (no `"type": "module"` in `package.json`) so it pulls the working CJS build. Don't add `"type": "module"` back.
+- **`0G_PRIVATE_KEY` starts with a digit.** JS can't access via `process.env.0G_PRIVATE_KEY` directly — always use `process.env["0G_PRIVATE_KEY"]` (square-bracket form). Matches the parent monorepo.
+- **Bot username is auto-detected at runtime** via grammy's `getMe()`. Don't hardcode `@RightHandAI_OpenClaw` anywhere except docs/banners; if you rename via @BotFather, the boot screen reflects it on next restart.
+- **On-chain tx per call only fires on first ack.** After that, all communication goes through the broker's off-chain HTTP path. Subsequent replies still link the provider contract address — that's a real on-chain artifact, just not per-call.
+- **`.env.example` and `package-lock.json` are force-tracked.** The parent `.gitignore` excludes `.env*` and `package-lock.json` repo-wide; the bot dir overrides via `git add -f` (one-time at initial commit). When adding new bot files matching parent-ignored patterns, may need `git add -f` again.
+- **In-memory chat history wipes on restart.** Persist to Redis if you need durability; PM2/nohup don't preserve it.
+- **One Telegram polling consumer per bot token.** If you migrate machines or run a duplicate, the second one fails with `409 Conflict`. To clear: `curl https://api.telegram.org/bot$BOT_TOKEN/deleteWebhook`.
+- **The 0G SDK references `window.location` at module-load.** `bot.ts` shims `globalThis.window` before importing the SDK — don't reorder those imports.
+
+---
+
+# Chat UI prototype (Right-Hand workspace + host console)
+
+The user-facing front of Right-Hand AI: a chat interface that simulates dispatching tasks to ENS-discovered specialists, plus a host console for the seller side. Currently mocked — no real backend wiring. Mock data lives in [`lib/mock-data.ts`](lib/mock-data.ts), the orchestration is a `setTimeout`-driven state machine in [`lib/task-runner.ts`](lib/task-runner.ts). It's the demo narrative layer, not the production runtime.
+
+## Pages
+
+| route               | purpose                                                                                  |
+|---------------------|------------------------------------------------------------------------------------------|
+| `/`                 | original AXL transport demo — preserved from Phase 1                                     |
+| `/landing`          | new chat interface — input + mode picker (Solo / Pair / Swarm / Deep) + progress sidebar |
+| `/host`             | host console — agent grid, recent invocations, earnings, builder form                    |
+| `/agents/[id]`      | agent detail — identity & infra, runtime logs, task history, pricing rules               |
+| `/ens-test`         | (existing) ENS register/read                                                             |
+| `/tasks`            | (existing) `TaskMarket` post / sign-on                                                   |
 
 ## File map
 
 ```
-axl/
-  mcp-router.py                          # vendored verbatim from gensyn-ai/axl/integrations/mcp_routing/
-  mcp-servers/
-    permission.ts                        # serialised terminal y/n approval gate
-    aws.ts                               # Express MCP service on :9100; 4 tools, self-registers with router
-    aws-helpers/
-      urls.ts                            # hardcoded AWS console URLs (deep-links)
-      browser.ts                         # `open <url>` wrapper (macOS)
-      ec2.ts                             # @aws-sdk/client-ec2 wrapper (AMI/sg/keypair hardcoded)
-      ssh.ts                             # ssh2 wrapper with retry-on-boot
-scripts/
-  mcp-call.ts                            # sender CLI: POST /mcp/<pk>/<svc> with JSON-RPC envelope
-  mcp-demo.sh                            # convenience wrappers for the 4 demo steps
+components/
+  ui/         — primitives: Button, Badge, Card, Input, Tabs, Disclosure, Icon
+  layout/     — AppShell (sidebar+topbar grid), Sidebar, TopBar, HostDashboard
+  chat/       — ChatInterface (split: messages + TaskProgressPanel),
+                ChatInput, ChatMessage, ModePicker, Welcome, ClarifyCard
+  host/       — AgentCard, AgentBuilderForm, AgentStatusTable, EarningsPanel
+  agents/     — AgentProfile, AgentRuntimePanel, AgentSkillTags
+lib/
+  mock-data.ts        — HOSTED_AGENTS, RECENT_INVOCATIONS, EXAMPLE_PROMPTS, MODES, NAV_*, HISTORY
+  build-script.ts     — buildScript(prompt, mode): TaskScript — branches by prompt regex
+  task-runner.ts      — useTaskRunner() React hook, the mock orchestration state machine
+types/index.ts        — shared TS types (HostedAgent, TaskScript, ClarifyState, AssistantMessage, …)
 ```
 
-## npm scripts
+## Two interaction patterns inside the chat
 
-| command | purpose |
-|---------|---------|
-| `npm run mcp:call -- <role> <svc> <tool> '<json>'` | low-level: any tool on any role |
-| `npm run mcp:demo:open` | `aws.open_console` on user |
-| `npm run mcp:demo:launch` | `aws.launch_instance` on user (override name with `INSTANCE_NAME=`) |
-| `INSTANCE_ID=i-… npm run mcp:demo:show` | `aws.show_in_console` on user |
-| `INSTANCE_ID=i-… INSTANCE_IP=x.x.x.x npm run mcp:demo:install` | `aws.install_nanoclaw` on user |
+**Approve/Deny** (used by Japan / WiFi / AWS-config / default flows): the assistant message renders an `ApprovalCard` showing one shell command. User clicks Approve or Deny. Used when the agent has fully decided and just wants permission for a sensitive action.
 
-## Setup additions (user role only)
+**Clarify** (used by the AWS+OpenClaw demo flow): when `script.clarifies` is set, `task-runner` pauses the run mid-flight and renders one [`ClarifyCard`](components/chat/ClarifyCard.tsx) per round. Each card has N multiple-choice questions; the user picks one option per question and clicks Continue. Modeled after Claude Code's `AskUserQuestion`. When all questions in a card are answered, the run resumes — and the final report's `reportItems` get template-interpolated with the picks (`{region}` → `us-east-1`, `{instanceType}` → `t3.micro`, etc.).
 
-`scripts/setup-axl.sh` for `MACHINE_ROLE=user` adds `"router_addr": "http://127.0.0.1", "router_port": 9003` to `axl/node-config.json` and `pip3 install --user aiohttp` (mcp_router.py's only dep).
+The AWS+OpenClaw demo runs **two** clarify rounds, one per specialist:
 
-`scripts/axl-start.sh` for `MACHINE_ROLE=user` additionally background-starts `python3 axl/mcp-router.py --port 9003` and `tsx axl/mcp-servers/aws.ts` after the AXL node is up. Cleanup trap and polling loop monitor all 4 processes.
+```
+prompt: "Deploy OpenClaw on a fresh EC2 instance"
+  ↓
+[Resolving specialists via ENS] → [Establishing AXL channels] → [Dispatching to AWS Provisioning]
+  ↓
+ClarifyCard #1 (AWS Provisioning Specialist):
+  Q: Which AWS region?       → us-east-1 / us-west-2 / eu-west-1 / ap-southeast-1
+  Q: What instance size?     → t3.micro / t3.small / t3.medium
+  ↓ Continue
+[Dispatching to OpenClaw Deployment]
+  ↓
+ClarifyCard #2 (OpenClaw Deployment Specialist):
+  Q: Which OpenClaw version? → 0.6.2 / 0.7.0-rc
+  Q: Admin password?         → Auto-generated / Prompted on install
+  ↓ Continue
+[Synthesizing final report]
+  ↓
+Final report — items interpolated with picks
+```
 
-For the live demo, the user pre-creates an AWS access key (in `~/.aws/credentials`) and an EC2 keypair `nanoclaw-key` (saved as `axl/nanoclaw-key.pem`, chmod 600). They log into the AWS console in their default browser before stage so cookies persist when `open_console` runs.
+## task-runner state machine
 
-## Mock mode
+[`useTaskRunner()`](lib/task-runner.ts) returns `{ messages, run, busy, pendingApproval, pendingClarify, submit, resolveApproval, resolveClarify }`.
 
-`MCP_AWS_MODE=mock` env var on the user's Mac → handlers skip browser + AWS + SSH and return fake `{instance_id, public_ip}` data after a 2s sleep. Same routing path, no AWS dependency. Useful for testing transport without burning real EC2 minutes.
+Two flow paths chosen by whether `script.clarifies` is present:
 
-`MCP_AUTO_APPROVE=1` env var bypasses the y/n prompt (for headless testing only — it defeats the whole point of MCP-as-execution-moat for live demos).
+- **Approval flow**: step animation → approval card → on approve: more step animation → final report.
+- **Clarify flow**: step animation → clarify[0] card → on submit: step animation + clarify[1] card → on submit: synthesis step → final report. Handles N clarify rounds (one per specialist).
 
-## Phase 2a gotchas
+Timing is `setTimeout`-driven via an `at(ms, fn)` helper. All timers clear on unmount or new submit. Phases progress through the `RunPhase` enum (`routing → discovering → executing → clarify | approval → finishing → done`).
 
-- **`matchesPeer` already handled the X-From-Peer-Id truncation in Phase 1** — `aws.ts` reuses it from `axl/axl.ts` to label the inbound caller as `agent-b` / `agent-c` in the approval prompt. Don't string-equality compare against the full pubkey.
-- **mcp-router.py needs aiohttp.** `setup-axl.sh` installs it via `pip3 install --user`. If your Mac's `python3` is from Homebrew Python, the install lands in `~/Library/Python/3.x/lib/...` — `python3 axl/mcp-router.py` finds it automatically.
-- **Service registration is at runtime.** `aws.ts` calls `POST /register` on the router on boot; if the router restarts, the service auto-reregisters (router calls go through, error response surfaces in agent's `mcp:call` log).
-- **Each tool invocation is independent and serialised.** The permission gate uses a promise chain so two concurrent MCP calls don't race on stdin. For demo, that's fine; for production, swap to a UI-based queue.
-- **Phase 1 still works in parallel.** A2A `/a2a/<peer>` and AXL `/send` are unchanged. `axl:send` continues to CC the user; `mcp:call` is additive, not replacing.
+## How prompts route to flows
+
+[`buildScript(prompt, mode)`](lib/build-script.ts) regex-matches the prompt and returns a `TaskScript`:
+
+| prompt regex                                        | flow                                                                  |
+|-----------------------------------------------------|-----------------------------------------------------------------------|
+| `/openclaw.*ec2|ec2.*openclaw|deploy.*openclaw/i`   | AWS+OpenClaw clarify flow (2 specialists, 2 clarify rounds)           |
+| `/japan|trip/i`                                     | Japan trip planner approval flow (3 specialists)                      |
+| `/wifi|wi-?fi/i`                                    | WiFi diagnostic approval flow (2 specialists)                         |
+| `/aws|cloud/i` (without openclaw)                   | AWS config approval flow (2 specialists)                              |
+| (default)                                           | OpenClaw bootstrap approval flow (3 specialists)                      |
+
+`mode` (Solo/Pair/Swarm/Deep) trims or extends the specialist list **after** the branch picks them.
+
+## Tailwind setup
+
+The repo runs **Tailwind v4** (`@import "tailwindcss"` in `globals.css`, `@tailwindcss/postcss` plugin). Custom theme tokens live in a `@theme` block in [`styles/globals.css`](styles/globals.css), **not a `tailwind.config.ts`**. Tokens: `bg-bg`, `bg-surface{,-2,-3}`, `text-ink{,-2,-3,-4}`, `border-border{,-strong}`, `bg-accent{,-soft,-fg}`, `shadow-{xs,sm,md}`, `text-2xs`. Fonts: Inter + JetBrains Mono via Google Fonts import in the same file.
+
+## Gotchas
+
+- **All data is mocked.** `HOSTED_AGENTS` and `RECENT_INVOCATIONS` in `lib/mock-data.ts` are fake — not derived from ENS or any contract. By design — the chat UI is the *narrative* layer; actual agent execution lives in Phase 2a's `axl/` + the `demo:final` pipeline.
+- **`AppShell`'s grid item children need `h-full` to span row height.** [`TaskProgressPanel`](components/chat/TaskProgressPanel.tsx)'s `<aside>` has `h-full` on it — without that, the content collapses to its natural height while the wrapper grid cell stays full-height, leaving an unstyled gap below. Same pattern applies to any new aside-style panel under `AppShell`.
+- **Per-message clarify state is preserved on the `AssistantMessage`** as `clarifies: ClarifyState[]`. Once answered, the card locks (radio shows the pick, no Continue button) — re-rendering the message later still shows the chosen answers. `pendingClarify` is just an index pointer to the active card.
+- **Path alias is `@/*` from repo root.** Imports look like `@/components/chat/ClarifyCard`. Configured in `tsconfig.json`.
+- **The chat UI is not at `/`.** When it landed, the original AXL transport demo at `/` was preserved; the new chat lives at `/landing`. If you ever want to promote the chat to `/`, move the AXL demo to a sub-route first — don't overwrite.
+- **`_app.tsx` wraps everything in `<Providers>` (RainbowKit/wagmi/react-query) AND `<Head>`** with title + viewport. Don't drop either when editing.
 
 ---
 
