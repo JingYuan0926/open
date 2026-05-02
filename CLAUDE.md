@@ -395,6 +395,96 @@ Router wraps as `{response: <jsonrpc>, error: null}` and the response propagates
 
 ---
 
+# Telegram bot — OpenClaw on 0G Compute (Phase 2a EC2 payload)
+
+The standalone Telegram bot that gets deployed onto the user's EC2 box once `launch_instance` succeeds. Long-polls Telegram, routes inbound messages through 0G Compute Network's `qwen-2.5-7b-instruct` provider, returns replies with provider/tx hyperlinks in an HTML footer.
+
+Lives in [`telegram-bot/`](telegram-bot/) as its own npm project — designed to clone+run on any Linux box with Node 20+, no parent-repo deps.
+
+## Why this matters
+
+Phase 2a's narrative is "agents on Mac B/C deploy a working AI service onto the user's EC2." Until this bot existed, the demo ended at "EC2 instance is running" — abstract. With the bot installed, the user opens Telegram on their phone, finds **@RightHandAI_OpenClaw**, and chats with an LLM that lives on their just-launched EC2 and pays for inference from a 0G testnet ledger — concrete, visible, real.
+
+## Files
+
+```
+telegram-bot/
+  bot.ts            # grammy long-poll → 0G compute (qwen-2.5-7b) → reply.
+                    # HTML footer with provider-address explorer link
+                    # + on-chain ack tx hash when one fires.
+                    # In-memory per-chat history (10 turns), /start /reset /help.
+  start.sh          # OpenClaw-style launcher: red lobster banner ("EXFOLIATE!"),
+                    # auto-installs deps on first run, exec npm start.
+  check.ts          # dev utility: prints wallet balance, ledger,
+                    # provider list with prices, per-provider sub-account state.
+                    # Run with: `./node_modules/.bin/tsx check.ts`
+  package.json      # CommonJS Node 20+, deps:
+                    #   grammy + @0glabs/0g-serving-broker + ethers + dotenv
+  tsconfig.json     # CommonJS / Node resolution (NOT NodeNext — see gotchas)
+  .env.example      # template — BOT_TOKEN + 0G_PRIVATE_KEY
+  .gitignore        # node_modules, .env, *.log
+  README.md         # setup, PM2/systemd recipes, troubleshooting
+```
+
+## How it integrates with Phase 2a
+
+The `install_telegram_bot` MCP tool (still to be wired into [`axl/mcp-servers/aws.ts`](axl/mcp-servers/aws.ts)) becomes a thin SSH wrapper. Three calls, all gated by the same MCP permission prompt as `walk_before` / `launch_instance`:
+
+```bash
+ssh ec2-user@<ip> 'sudo yum install -y nodejs git'
+ssh ec2-user@<ip> 'git clone <repo>/open && cd open/telegram-bot && cp .env.example .env'
+ssh ec2-user@<ip> "cd open/telegram-bot && \
+  sed -i 's|^BOT_TOKEN=.*|BOT_TOKEN=$BOT_TOKEN|' .env && \
+  sed -i 's|^0G_PRIVATE_KEY=.*|0G_PRIVATE_KEY=$ZG_KEY|' .env"
+ssh ec2-user@<ip> 'cd open/telegram-bot && nohup ./start.sh > openclaw.log 2>&1 &'
+```
+
+After that, the user opens [t.me/RightHandAI_OpenClaw](https://t.me/RightHandAI_OpenClaw), sends `/start`, and chats. Every reply is qwen inference billed against the 0G ledger.
+
+## 0G Compute integration
+
+Mirrors the `callVia0GCompute()` function in [`pages/api/0g/inft-infer.ts`](pages/api/0g/inft-infer.ts) exactly — same broker setup (`createZGComputeNetworkBroker(wallet)`), same env var (`0G_PRIVATE_KEY`), same provider call sequence. The bot uses **only the qwen-2.5-7b provider** because it's the only chat model registered on 0G testnet right now (run `tsx check.ts` to confirm).
+
+Per-message flow:
+1. `broker.inference.acknowledged(provider)` — read, free
+2. `broker.inference.acknowledgeProviderSigner(provider)` — **on-chain tx** on first call to a new provider; cached after
+3. `broker.inference.getServiceMetadata(provider)` — read endpoint + model name
+4. `broker.inference.getRequestHeaders(provider, message)` — signs request off-chain
+5. `fetch(endpoint + "/chat/completions", { headers })` — actual inference (OpenAI-compatible)
+6. `broker.inference.processResponse(provider, chatID, reply)` — billing settle (silent on failure)
+
+The bot hooks `wallet.sendTransaction` to capture step 2's tx hash and surfaces it as a hyperlink in the reply footer when present.
+
+## Boot UI
+
+The branded boot is in two layers:
+
+1. **`start.sh`** prints the red-bordered lobster banner before launching node.
+2. **`bot.ts`** then runs a 5-step staged init that runs *real* on-chain probes and prints each as a dotted leader line:
+   ```
+   [ 1/5 ]  ▸ loading 0g compute broker .................  ✓
+   [ 2/5 ]  ▸ probing 0g testnet ........................  ✓ gas 12.85 0G · chain 16602
+   [ 3/5 ]  ▸ reading ledger ............................  ✓ 7.49 0G allocated
+   [ 4/5 ]  ▸ acknowledging providers ...................  ✓ qwen-2.5-7b-instruct
+   [ 5/5 ]  ▸ pairing telegram channel ..................  ✓ @RightHandAI_OpenClaw
+   ```
+3. Finishes with `EXFOLIATE! OpenClaw is online.` Shutdown gets `─ shutting down — the lobster sleeps 🦞`.
+
+The vibe is borrowed from [github.com/openclaw/openclaw](https://github.com/openclaw/openclaw) (their tagline, lobster mascot, CLI-first aesthetic).
+
+## Gotchas
+
+- **0G SDK ESM build is broken** as of `@0glabs/0g-serving-broker@0.7.8` — exports a missing `'C'` constant. The bot is CommonJS (no `"type": "module"` in `package.json`) so it pulls the working CJS build. Don't add `"type": "module"` back.
+- **`0G_PRIVATE_KEY` starts with a digit.** JS can't access via `process.env.0G_PRIVATE_KEY` directly — always use `process.env["0G_PRIVATE_KEY"]` (square-bracket form). Matches the parent monorepo.
+- **Bot username is auto-detected at runtime** via grammy's `getMe()`. Don't hardcode `@RightHandAI_OpenClaw` anywhere except docs/banners; if you rename via @BotFather, the boot screen reflects it on next restart.
+- **On-chain tx per call only fires on first ack.** After that, all communication goes through the broker's off-chain HTTP path. Subsequent replies still link the provider contract address — that's a real on-chain artifact, just not per-call.
+- **`.env.example` and `package-lock.json` are force-tracked.** The parent `.gitignore` excludes `.env*` and `package-lock.json` repo-wide; the bot dir overrides via `git add -f` (one-time at initial commit). When adding new bot files matching parent-ignored patterns, may need `git add -f` again.
+- **In-memory chat history wipes on restart.** Persist to Redis if you need durability; PM2/nohup don't preserve it.
+- **One Telegram polling consumer per bot token.** If you migrate machines or run a duplicate, the second one fails with `409 Conflict`. To clear: `curl https://api.telegram.org/bot$BOT_TOKEN/deleteWebhook`.
+- **The 0G SDK references `window.location` at module-load.** `bot.ts` shims `globalThis.window` before importing the SDK — don't reorder those imports.
+
+---
+
 # Phase 2b — ENS task marketplace + royalties (next)
 
 Phase 2a wires execution. Phase 2b turns the demo into the real product flow: **a user posts a task on ENS, OpenClaw specialists bid/sign in, the elected swarm coordinates over AXL, and MCP performs the actual work on the user's machine.**
