@@ -1,6 +1,0 @@
-node_modules/
-.env
-*.log
-nanoclaw.log
-.DS_Store
-dist/
