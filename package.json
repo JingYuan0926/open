@@ -23,6 +23,8 @@
     "demo:cli-only": "tsx scripts/demo-cli-only.ts",
     "chrome:debug": "bash scripts/chrome-debug.sh",
     "demo:cdp": "tsx scripts/demo-cdp.ts",
+    "demo:before": "tsx scripts/demo-before.ts",
+    "demo:after": "tsx scripts/demo-after.ts",
     "capture-urls": "tsx scripts/capture-urls.ts"
   },
   "dependencies": {
