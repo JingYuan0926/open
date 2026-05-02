@@ -1,12 +1,10 @@
 import * as React from "react";
-import { ModePicker } from "@/components/chat/ModePicker";
 import { Button } from "@/components/ui/Button";
 import { Icon } from "@/components/ui/Icon";
-import type { ModeId } from "@/types";
 
-export function ChatInput({ value, onChange, onSubmit, mode, onModeChange, disabled }: {
+export function ChatInput({ value, onChange, onSubmit, disabled }: {
   value: string; onChange: (v: string) => void; onSubmit: () => void;
-  mode: ModeId; onModeChange: (id: ModeId) => void; disabled?: boolean;
+  disabled?: boolean;
 }) {
   const taRef = React.useRef<HTMLTextAreaElement>(null);
   React.useEffect(() => {
@@ -29,7 +27,6 @@ export function ChatInput({ value, onChange, onSubmit, mode, onModeChange, disab
           placeholder="Tell Right-Hand what to do…"
           className="block w-full bg-transparent border-0 outline-none resize-none px-4 pt-3.5 pb-1 text-[14.5px] leading-relaxed text-ink placeholder:text-ink-4 max-h-[200px]" />
         <div className="flex items-center gap-2 px-2 pb-2 pl-3">
-          <ModePicker mode={mode} onChange={onModeChange} />
           <Button variant="ghost" icon="plus" size="sm">Attach</Button>
           <div className="flex-1" />
           <span className="text-[11.5px] text-ink-3 px-1">{disabled ? "Working…" : "↵ to send · ⇧↵ for newline"}</span>

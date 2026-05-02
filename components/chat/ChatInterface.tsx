@@ -2,7 +2,6 @@ import * as React from "react";
 import { Welcome } from "@/components/chat/Welcome";
 import { ChatInput } from "@/components/chat/ChatInput";
 import { TaskCreationCard, suggestSkills } from "@/components/chat/TaskCreationCard";
-import { TaskProgressPanel } from "@/components/chat/TaskProgressPanel";
 import { DemoFlow } from "@/components/chat/DemoFlow";
 import { MODES } from "@/lib/mock-data";
 import type { ModeId } from "@/types";
@@ -21,7 +20,7 @@ const MODE_TO_MAX: Record<ModeId, number> = {
 
 export function ChatInterface() {
   const [input, setInput] = React.useState("");
-  const [mode, setMode] = React.useState<ModeId>("swarm");
+  const mode: ModeId = "swarm";
   const [items, setItems] = React.useState<ChatItem[]>([]);
   const scrollRef = React.useRef<HTMLDivElement>(null);
 
@@ -65,8 +64,8 @@ export function ChatInterface() {
   const modeLabel = MODES.find((x) => x.id === mode)!.label;
 
   return (
-    <div className="grid grid-cols-[1fr_360px] min-h-0 min-w-0 max-[1080px]:grid-cols-1">
-      <div className="grid grid-rows-[1fr_auto] min-h-0 bg-bg relative">
+    <div className="min-h-0 min-w-0">
+      <div className="grid grid-rows-[1fr_auto] h-full min-h-0 bg-bg relative">
         <div ref={scrollRef} className="overflow-y-auto pt-8 pb-6">
           {items.length === 0 ? (
             <Welcome onPick={handlePick} />
@@ -98,12 +97,7 @@ export function ChatInterface() {
           value={input}
           onChange={setInput}
           onSubmit={handleSubmit}
-          mode={mode}
-          onModeChange={setMode}
         />
-      </div>
-      <div className="max-[1080px]:hidden">
-        <TaskProgressPanel run={null} mode={mode} />
       </div>
     </div>
   );
