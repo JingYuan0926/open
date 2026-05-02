@@ -122,6 +122,18 @@ export class CDPSession {
     return false;
   }
 
+  /** Current URL of the active tab (after all redirects). */
+  async getCurrentUrl(): Promise<string> {
+    return (await this.evaluate<string>("window.location.href")) ?? "";
+  }
+
+  /** Full navigation history of this tab. Each entry has {id, url, title, transitionType}. */
+  async getNavigationHistory(): Promise<Array<{ url: string; title: string }>> {
+    const r = await this.send("Page.getNavigationHistory");
+    const entries = (r.result?.entries as Array<{ url: string; title: string }>) ?? [];
+    return entries;
+  }
+
   close(): void {
     this.ws.close();
   }

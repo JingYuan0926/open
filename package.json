@@ -22,7 +22,8 @@
     "demo:popup": "tsx scripts/demo-popup.ts",
     "demo:cli-only": "tsx scripts/demo-cli-only.ts",
     "chrome:debug": "bash scripts/chrome-debug.sh",
-    "demo:cdp": "tsx scripts/demo-cdp.ts"
+    "demo:cdp": "tsx scripts/demo-cdp.ts",
+    "capture-urls": "tsx scripts/capture-urls.ts"
   },
   "dependencies": {
     "@0gfoundation/0g-ts-sdk": "^1.2.6",
