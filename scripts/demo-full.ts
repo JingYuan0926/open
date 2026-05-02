@@ -35,7 +35,7 @@ const MOCK = process.env.MOCK === "1";
 
 const URLS = {
   consoleHome: "https://us-east-1.console.aws.amazon.com/console/home?region=us-east-1#",
-  ec2Dashboard: "https://us-east-1.console.aws.amazon.com/ec2/home?region=us-east-1",
+  ec2Dashboard: "https://us-east-1.console.aws.amazon.com/ec2/home?region=us-east-1#Home:",
   launchWizard: "https://us-east-1.console.aws.amazon.com/ec2/home?region=us-east-1#LaunchInstances:",
   instanceDetail: (id: string) =>
     `https://us-east-1.console.aws.amazon.com/ec2/home?region=us-east-1#InstanceDetails:instanceId=${id}`,
