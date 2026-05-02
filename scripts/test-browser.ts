@@ -28,22 +28,36 @@ import { detectOpener, openUrl } from "../axl/mcp-servers/aws-helpers/browser";
 // expire. For repeat demos, swap the generic https://signin.aws.amazon.com/console
 type Step = { url: string; pause: boolean; label: string };
 
-// Using GENERIC sign-in URL (https://signin.aws.amazon.com/console) instead
-// of OAuth deep-links with code_challenge/state — those expire after one use.
-// The generic URL triggers a fresh OAuth flow each time, so demo is repeatable.
-//
-// We open the sign-in URL TWICE on purpose:
-//   step 2 — AI is "navigating to sign-in" (flashes OAuth, lands on sign-in form)
-//   step 3 — AI has "selected root user", user takes over to type credentials
-// Visually feels like two distinct AI actions, even though the URL is the same.
+// ┌──────────────────────────────────────────────────────────────────────────┐
+// │  WARNING: SIGNIN_OAUTH_URL and SIGNIN_FORM_URL are SESSION-BOUND.        │
+// │  They contain a one-time PKCE code_challenge that AWS consumes after     │
+// │  one OAuth round-trip. After running this demo once, those URLs WILL     │
+// │  return:                                                                  │
+// │    {"error":"invalid_request","error_description":"Missing required ..."}│
+// │    400 Bad Request                                                        │
+// │  Before each fresh demo, open Chrome → AWS landing → click "Sign In to   │
+// │  Console" → copy the URL from the address bar (that's the OAuth URL),    │
+// │  then click root → copy that URL too (sign-in form URL). Update the      │
+// │  constants below, OR pass via env:                                       │
+// │    SIGNIN_OAUTH_URL='...' SIGNIN_FORM_URL='...' npm run test:browser     │
+// │  For repeatable demos that DON'T expire, replace both with the generic   │
+// │  https://signin.aws.amazon.com/console (AWS handles OAuth internally).   │
+// └──────────────────────────────────────────────────────────────────────────┘
+
+const SIGNIN_OAUTH_URL = process.env.SIGNIN_OAUTH_URL ??
+  "https://ap-southeast-2.signin.aws.amazon.com/oauth?client_id=arn%3Aaws%3Asignin%3A%3A%3Aconsole%2Fcanvas&code_challenge=hXPl7H-TkMS1mKei2sv9nXvIBI0Bo_JVSuorizlFYGY&code_challenge_method=SHA-256&response_type=code&redirect_uri=https%3A%2F%2Fconsole.aws.amazon.com%2Fconsole%2Fhome%3Fca-oauth-flow-id%3Dc71b%26hashArgs%3D%2523%26isauthcode%3Dtrue%26oauthStart%3D1777728980985%26state%3DhashArgsFromTB_ap-southeast-2_7158060899730700";
+
+const SIGNIN_FORM_URL = process.env.SIGNIN_FORM_URL ??
+  "https://signin.aws.amazon.com/signin?client_id=arn%3Aaws%3Asignin%3A%3A%3Aconsole%2Fcanvas&redirect_uri=https%3A%2F%2Fconsole.aws.amazon.com%2Fconsole%2Fhome%3Fca-oauth-flow-id%3Dc71b%26hashArgs%3D%2523%26isauthcode%3Dtrue%26oauthStart%3D1777728980985%26state%3DhashArgsFromTB_ap-southeast-2_7158060899730700&page=resolve&code_challenge=hXPl7H-TkMS1mKei2sv9nXvIBI0Bo_JVSuorizlFYGY&code_challenge_method=SHA-256&backwards_compatible=true";
+
 const DEFAULT_STEPS: Step[] = [
   { label: "AWS free-tier landing", pause: false,
     url: "https://aws.amazon.com/free/" },
   { label: "AI navigating to sign-in (OAuth flash)", pause: false,
-    url: "https://signin.aws.amazon.com/console" },
-  // ★ PAUSE here — re-open the sign-in form, user types credentials
+    url: SIGNIN_OAUTH_URL },
+  // ★ PAUSE here — sign-in form, user types root email + password
   { label: "AI clicked root, you type email + password here", pause: true,
-    url: "https://signin.aws.amazon.com/console" },
+    url: SIGNIN_FORM_URL },
   { label: "Console home", pause: false,
     url: "https://us-east-1.console.aws.amazon.com/console/home?region=us-east-1#" },
   { label: "EC2 dashboard", pause: false,
