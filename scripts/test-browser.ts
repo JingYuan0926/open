@@ -45,10 +45,10 @@ type Step = { url: string; pause: boolean; label: string };
 // └──────────────────────────────────────────────────────────────────────────┘
 
 const SIGNIN_OAUTH_URL = process.env.SIGNIN_OAUTH_URL ??
-  "https://ap-southeast-2.signin.aws.amazon.com/oauth?client_id=arn%3Aaws%3Asignin%3A%3A%3Aconsole%2Fcanvas&code_challenge=hXPl7H-TkMS1mKei2sv9nXvIBI0Bo_JVSuorizlFYGY&code_challenge_method=SHA-256&response_type=code&redirect_uri=https%3A%2F%2Fconsole.aws.amazon.com%2Fconsole%2Fhome%3Fca-oauth-flow-id%3Dc71b%26hashArgs%3D%2523%26isauthcode%3Dtrue%26oauthStart%3D1777728980985%26state%3DhashArgsFromTB_ap-southeast-2_7158060899730700";
+  "https://ap-southeast-2.signin.aws.amazon.com/oauth?client_id=arn%3Aaws%3Asignin%3A%3A%3Aconsole%2Fcanvas&code_challenge=MiVq-6q3-307SRiSo0dJYp25rMTSSz_-TLq69nPL1qo&code_challenge_method=SHA-256&response_type=code&redirect_uri=https%3A%2F%2Fconsole.aws.amazon.com%2Fconsole%2Fhome%3Fca-oauth-flow-id%3D4904%26hashArgs%3D%2523%26isauthcode%3Dtrue%26nc2%3Dh_si%26oauthStart%3D1777729653782%26sc_channel%3Dps%26src%3Dheader-signin%26state%3DhashArgsFromTB_ap-southeast-2_b269f17a7617f26e%26trk%3D06dd4e64-3ddf-405e-bec9-d2414185926c";
 
 const SIGNIN_FORM_URL = process.env.SIGNIN_FORM_URL ??
-  "https://signin.aws.amazon.com/signin?client_id=arn%3Aaws%3Asignin%3A%3A%3Aconsole%2Fcanvas&redirect_uri=https%3A%2F%2Fconsole.aws.amazon.com%2Fconsole%2Fhome%3Fca-oauth-flow-id%3Dc71b%26hashArgs%3D%2523%26isauthcode%3Dtrue%26oauthStart%3D1777728980985%26state%3DhashArgsFromTB_ap-southeast-2_7158060899730700&page=resolve&code_challenge=hXPl7H-TkMS1mKei2sv9nXvIBI0Bo_JVSuorizlFYGY&code_challenge_method=SHA-256&backwards_compatible=true";
+  "https://signin.aws.amazon.com/signin?client_id=arn%3Aaws%3Asignin%3A%3A%3Aconsole%2Fcanvas&redirect_uri=https%3A%2F%2Fconsole.aws.amazon.com%2Fconsole%2Fhome%3Fca-oauth-flow-id%3D4904%26hashArgs%3D%2523%26isauthcode%3Dtrue%26nc2%3Dh_si%26oauthStart%3D1777729653782%26sc_channel%3Dps%26src%3Dheader-signin%26state%3DhashArgsFromTB_ap-southeast-2_b269f17a7617f26e%26trk%3D06dd4e64-3ddf-405e-bec9-d2414185926c&page=resolve&code_challenge=MiVq-6q3-307SRiSo0dJYp25rMTSSz_-TLq69nPL1qo&code_challenge_method=SHA-256&backwards_compatible=true";
 
 const DEFAULT_STEPS: Step[] = [
   { label: "AWS free-tier landing", pause: false,
