@@ -1,16 +1,19 @@
 // scripts/test-browser.ts — sequence of URL navigations in Chrome.
 //
 // Same code path as the MCP `open_console` and `show_in_console` tools.
-// If this works on your machine, the demo's browser-open steps will work too.
 //
-// Default: walks the AWS account-creation flow (free-tier → signup) with a
-// 5s pause between each page. Pass any number of URLs on the CLI to override.
+// Default flow walks the AWS account-creation flow which requires actual
+// user interaction (typing email, password, clicking buttons), so by
+// default the script PAUSES after each URL and waits for you to press
+// Enter before opening the next one. Lets you sign up / sign in at your
+// own pace.
 //
 // Run:
-//   npm run test:browser
-//   npm run test:browser -- <url1> <url2> [url3] [url4]…
-//   DELAY_MS=8000 npm run test:browser    (slower walk)
-//   BROWSER=msedge npm run test:browser   (Edge instead of Chrome)
+//   npm run test:browser                           (pause for Enter between URLs)
+//   AUTO=1 npm run test:browser                    (auto-advance with DELAY_MS gap)
+//   npm run test:browser -- <url1> <url2> [url3]   (custom URL list)
+//   DELAY_MS=8000 npm run test:browser             (when AUTO=1: slower walk)
+//   BROWSER=msedge npm run test:browser            (Edge instead of Chrome)
 
 import { detectOpener, openUrl } from "../axl/mcp-servers/aws-helpers/browser";
 
@@ -51,13 +54,41 @@ const reset = "\x1b[0m";
 
 const cliUrls = process.argv.slice(2);
 const urls = cliUrls.length > 0 ? cliUrls : DEFAULT_URLS;
-const delayMs = parseInt(process.env.DELAY_MS ?? "5000", 10);
+const AUTO = process.env.AUTO === "1";
+const delayMs = parseInt(process.env.DELAY_MS ?? "7000", 10);
+
+async function waitForEnter(promptMsg: string): Promise<void> {
+  if (!process.stdin.isTTY) {
+    // No TTY (e.g. piped stdin) — fall back to a delay
+    await new Promise(r => setTimeout(r, delayMs));
+    return;
+  }
+  process.stdout.write(`${yellow}  ${promptMsg}${reset}`);
+  await new Promise<void>((resolve) => {
+    process.stdin.setRawMode?.(true);
+    process.stdin.resume();
+    process.stdin.once("data", (data) => {
+      process.stdin.setRawMode?.(false);
+      process.stdin.pause();
+      // Ctrl+C handling — exit gracefully
+      const buf = data as Buffer;
+      if (buf[0] === 3) process.exit(0);
+      resolve();
+    });
+  });
+  console.log("");
+}
 
 (async () => {
   const opener = detectOpener();
   console.log(`${cyan}━━ test-browser ━━${reset}`);
   console.log(`${dim}opener: ${opener.cmd} ${opener.args("<url>").filter(Boolean).join(" ")}${reset}`);
-  console.log(`${dim}walking ${urls.length} URL${urls.length === 1 ? "" : "s"} with ${delayMs}ms between each${reset}`);
+  if (AUTO) {
+    console.log(`${dim}AUTO=1 — auto-advance with ${delayMs}ms between URLs${reset}`);
+  } else {
+    console.log(`${dim}interactive mode — press Enter to advance to next URL (set AUTO=1 to auto-walk)${reset}`);
+  }
+  console.log(`${dim}${urls.length} URL${urls.length === 1 ? "" : "s"} total${reset}`);
   console.log("");
 
   for (let i = 0; i < urls.length; i++) {
@@ -69,14 +100,18 @@ const delayMs = parseInt(process.env.DELAY_MS ?? "5000", 10);
     console.log(`${green}  ✓ opened${reset}`);
 
     if (i < urls.length - 1) {
-      console.log(`${dim}  waiting ${delayMs}ms before next step…${reset}`);
-      await new Promise(r => setTimeout(r, delayMs));
+      if (AUTO) {
+        console.log(`${dim}  waiting ${delayMs}ms before next step…${reset}`);
+        await new Promise(r => setTimeout(r, delayMs));
+      } else {
+        await waitForEnter(`Press Enter when done with this page → next URL (Ctrl+C to quit)`);
+      }
       console.log("");
     }
   }
 
   console.log("");
-  console.log(`${green}━━ done — ${urls.length} pages opened in sequence ━━${reset}`);
+  console.log(`${green}━━ done — ${urls.length} pages opened ━━${reset}`);
 })().catch(err => {
   console.error(`\nerror: ${err instanceof Error ? err.message : String(err)}`);
   process.exit(1);
