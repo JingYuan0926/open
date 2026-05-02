@@ -7,17 +7,22 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { namehash, type Address, type Hash } from "viem";
 import {
     useAccount,
+    usePublicClient,
     useReadContract,
     useWaitForTransactionReceipt,
     useWriteContract,
 } from "wagmi";
+import { useQuery } from "@tanstack/react-query";
 import { NAME_WRAPPER_ABI } from "../abis/NameWrapper";
+import { PUBLIC_RESOLVER_ABI } from "../abis/PublicResolver";
 import { SPECIALIST_REGISTRAR_ABI } from "../abis/SpecialistRegistrar";
 import {
     ENS_CHAIN_ID,
     ENS_PARENT_DOMAIN,
+    ENS_PUBLIC_RESOLVER_ADDRESS,
     NAME_WRAPPER_ADDRESS,
     SPECIALIST_REGISTRAR_ADDRESS,
+    SPECIALIST_TEXT_KEYS,
     type SpecialistRecords,
 } from "../networkConfig";
 import { isValidLabel } from "../ens-registry";
@@ -236,4 +241,95 @@ export function useRegisterSpecialist() {
         reset,
         isBusy: step === "registering" || step === "confirming",
     };
+}
+
+// ─── useMySpecialists ──────────────────────────────────────────────────────
+// Returns every specialist the connected wallet has registered through this
+// contract, by reading the on-chain `getOwned(address)` view (one RPC call,
+// no event-log scan). For each entry, the six text records are batched
+// through Multicall3 in a single follow-up call.
+//
+// Note: per the contract's `_ownedByCaller` comment, this is registration
+// history, not live ownership — if a wrapped subname has been transferred
+// elsewhere after registration, it remains in the list.
+
+const TEXT_KEY_ORDER = [
+    SPECIALIST_TEXT_KEYS.axlPubkey,
+    SPECIALIST_TEXT_KEYS.skills,
+    SPECIALIST_TEXT_KEYS.workspaceUri,
+    SPECIALIST_TEXT_KEYS.tokenId,
+    SPECIALIST_TEXT_KEYS.price,
+    SPECIALIST_TEXT_KEYS.version,
+] as const;
+
+export type MySpecialist = {
+    label: string;
+    fullName: string;
+    node: `0x${string}`;
+    owner: Address;
+    records: SpecialistRecords;
+};
+
+export function useMySpecialists() {
+    const { address } = useAccount();
+    const client = usePublicClient({ chainId: ENS_CHAIN_ID });
+
+    return useQuery<MySpecialist[]>({
+        queryKey: ["my-specialists", ENS_CHAIN_ID, address],
+        enabled: Boolean(address && client),
+        staleTime: 30_000,
+        queryFn: async () => {
+            if (!address || !client) return [];
+
+            const owned = await client.readContract({
+                address: SPECIALIST_REGISTRAR_ADDRESS,
+                abi: SPECIALIST_REGISTRAR_ABI,
+                functionName: "getOwned",
+                args: [address],
+            });
+
+            const results = await Promise.all(
+                owned.map(async (reg): Promise<MySpecialist> => {
+                    const reads = await client.multicall({
+                        contracts: TEXT_KEY_ORDER.map((key) => ({
+                            address: ENS_PUBLIC_RESOLVER_ADDRESS,
+                            abi: PUBLIC_RESOLVER_ABI,
+                            functionName: "text" as const,
+                            args: [reg.node, key] as const,
+                        })),
+                        allowFailure: true,
+                    });
+                    const texts = reads.map((r) =>
+                        r.status === "success" ? (r.result as string) : "",
+                    );
+                    const [
+                        axlPubkey,
+                        skills,
+                        workspaceUri,
+                        tokenId,
+                        price,
+                        version,
+                    ] = texts;
+
+                    return {
+                        label: reg.label,
+                        fullName: `${reg.label}.${ENS_PARENT_DOMAIN}`,
+                        node: reg.node,
+                        owner: address,
+                        records: {
+                            axlPubkey,
+                            skills,
+                            workspaceUri,
+                            tokenId,
+                            price,
+                            version,
+                        },
+                    };
+                }),
+            );
+
+            // Newest first (the contract pushes append, so latest is last).
+            return results.reverse();
+        },
+    });
 }
