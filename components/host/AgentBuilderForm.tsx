@@ -14,21 +14,42 @@ import {
 } from "@/lib/ens/SpecialistRegistrar";
 import { isValidLabel } from "@/lib/ens-registry";
 import type { SpecialistRecords } from "@/lib/networkConfig";
+import { SPARKINFT_ADDRESS } from "@/lib/sparkinft-abi";
 
 const DEFAULT_AXL_PUBKEY = "0x" + "00".repeat(32);
-const DEFAULT_TOKEN_ID = "1";
 const DEFAULT_VERSION = "0.1.0";
+
+function inftUrl(tokenId: string) {
+  return `https://chainscan-galileo.0g.ai/nft/${SPARKINFT_ADDRESS}/${tokenId}`;
+}
+
+type MintStep = "idle" | "minting" | "minted" | "error";
 
 function shortAddress(addr?: string | null) {
   if (!addr) return "—";
   return `${addr.slice(0, 6)}…${addr.slice(-4)}`;
 }
 
-function ExplorerLink({ hash, label }: { hash: string; label?: string }) {
+function SepoliaTxLink({ hash, label }: { hash: string; label?: string }) {
   if (!hash || hash === "0x") return null;
   return (
     <a
       href={`https://sepolia.etherscan.io/tx/${hash}`}
+      target="_blank"
+      rel="noopener noreferrer"
+      className="text-blue-700 underline font-mono text-[11.5px] break-all"
+    >
+      {label ? `${label}: ` : ""}
+      {hash.slice(0, 10)}…{hash.slice(-8)}
+    </a>
+  );
+}
+
+function ZeroGTxLink({ hash, label }: { hash: string; label?: string }) {
+  if (!hash || hash === "0x") return null;
+  return (
+    <a
+      href={`https://chainscan-galileo.0g.ai/tx/${hash}`}
       target="_blank"
       rel="noopener noreferrer"
       className="text-blue-700 underline font-mono text-[11.5px] break-all"
@@ -48,8 +69,13 @@ export function AgentBuilderForm() {
   const [price, setPrice] = React.useState("0.16");
   const [runtime, setRuntime] = React.useState("Node 20 · isolated VM");
   const [axlPubkey, setAxlPubkey] = React.useState(DEFAULT_AXL_PUBKEY);
-  const [tokenId, setTokenId] = React.useState(DEFAULT_TOKEN_ID);
   const [version, setVersion] = React.useState(DEFAULT_VERSION);
+
+  // iNFT mint state — populated by /api/0g/mint-inft before ENS register.
+  const [mintStep, setMintStep] = React.useState<MintStep>("idle");
+  const [mintTokenId, setMintTokenId] = React.useState<string | null>(null);
+  const [mintTxHash, setMintTxHash] = React.useState<string | null>(null);
+  const [mintError, setMintError] = React.useState<string | null>(null);
 
   const slug =
     name
@@ -59,51 +85,123 @@ export function AgentBuilderForm() {
   const labelValid = isValidLabel(slug);
 
   const status = useParentStatus();
-  const { step, error, result, txHash, register, reset, isBusy } =
-    useRegisterSpecialist();
+  const {
+    step: registerStep,
+    error: registerError,
+    result,
+    txHash: registerTxHash,
+    register,
+    reset: resetRegister,
+    isBusy: registerBusy,
+  } = useRegisterSpecialist();
 
   const fullName = `${slug}.${status.parentDomain}`;
-  const workspaceUri = `0g://ws/agents/${slug}/v1`;
+  // Until the iNFT is minted we don't have a tokenId, so the workspace URI
+  // is shown as a placeholder. The actual value written into ENS uses the
+  // post-mint tokenId — see `onPublish` below.
+  const workspaceUriPreview =
+    mintTokenId !== null ? inftUrl(mintTokenId) : "(set after iNFT mint)";
 
-  const records: SpecialistRecords = React.useMemo(
-    () => ({
+  const isBusy = mintStep === "minting" || registerBusy;
+  const isSuccess = registerStep === "success";
+  const hasError = mintStep === "error" || registerStep === "error";
+
+  const reset = React.useCallback(() => {
+    setMintStep("idle");
+    setMintTokenId(null);
+    setMintTxHash(null);
+    setMintError(null);
+    resetRegister();
+  }, [resetRegister]);
+
+  const onPublish = async () => {
+    if (!labelValid || !status.connectedAddress) return;
+
+    // Step 1: mint iNFT on 0G Galileo (server-signed).
+    setMintStep("minting");
+    setMintError(null);
+    setMintTokenId(null);
+    setMintTxHash(null);
+
+    let tokenId: string;
+    try {
+      const r = await fetch("/api/0g/mint-inft", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          to: status.connectedAddress,
+          botId: slug,
+          domainTags: skill,
+          serviceOfferings: desc,
+        }),
+      });
+      const j = await r.json();
+      if (!j.success) throw new Error(j.error || "iNFT mint failed");
+      tokenId = j.tokenId as string;
+      setMintTokenId(tokenId);
+      setMintTxHash(j.txHash as string);
+      setMintStep("minted");
+    } catch (e) {
+      setMintError(e instanceof Error ? e.message : String(e));
+      setMintStep("error");
+      return;
+    }
+
+    // Step 2: register the ENS subname on Sepolia. The 0g_workspace_uri
+    // text record now points at the freshly-minted iNFT on chainscan-galileo
+    // (BlockScout-style /token/<contract>/instance/<id>).
+    const records: SpecialistRecords = {
       axlPubkey,
       skills: skill,
-      workspaceUri,
+      workspaceUri: inftUrl(tokenId),
       tokenId,
       price,
       version,
-    }),
-    [axlPubkey, skill, workspaceUri, tokenId, price, version],
-  );
-
-  const onPublish = () => {
-    if (!labelValid) return;
+    };
     register(slug, records);
   };
 
-  const showResetButton = step === "success" || step === "error";
+  const showResetButton = isSuccess || hasError;
 
-  const headerBadge =
-    step === "success" ? (
-      <Badge variant="success" dot>
-        Registered
-      </Badge>
-    ) : step === "registering" ? (
-      <Badge variant="info" dot>
-        Awaiting signature
-      </Badge>
-    ) : step === "confirming" ? (
-      <Badge variant="info" dot>
-        Confirming
-      </Badge>
-    ) : step === "error" ? (
-      <Badge variant="danger" dot>
-        Failed
-      </Badge>
-    ) : (
-      <Badge variant="info">Draft</Badge>
-    );
+  const headerBadge = isSuccess ? (
+    <Badge variant="success" dot>
+      Registered
+    </Badge>
+  ) : mintStep === "minting" ? (
+    <Badge variant="info" dot>
+      Minting iNFT
+    </Badge>
+  ) : registerStep === "registering" ? (
+    <Badge variant="info" dot>
+      Awaiting signature
+    </Badge>
+  ) : registerStep === "confirming" ? (
+    <Badge variant="info" dot>
+      Confirming
+    </Badge>
+  ) : hasError ? (
+    <Badge variant="danger" dot>
+      Failed
+    </Badge>
+  ) : (
+    <Badge variant="info">Draft</Badge>
+  );
+
+  const buttonLabel =
+    mintStep === "minting"
+      ? "Minting iNFT…"
+      : registerStep === "registering"
+        ? "Sign in wallet…"
+        : registerStep === "confirming"
+          ? "Confirming…"
+          : "Publish Specialist";
+
+  const inftPreviewText =
+    mintTokenId !== null
+      ? `iNFT #${mintTokenId} · owner: ${shortAddress(status.connectedAddress ?? null)}`
+      : mintStep === "minting"
+        ? "iNFT — minting on 0G Galileo…"
+        : `iNFT — minted on publish · to ${shortAddress(status.connectedAddress ?? null)}`;
 
   return (
     <Card>
@@ -142,7 +240,7 @@ export function AgentBuilderForm() {
           </div>
           <Field
             label="Persona / description"
-            hint="Off-chain — not part of the ENS records (lives in the 0G profile)."
+            hint="Stored as the iNFT's serviceOfferings on 0G Galileo."
           >
             <Textarea
               value={desc}
@@ -169,13 +267,6 @@ export function AgentBuilderForm() {
                   className="font-mono text-[12px]"
                 />
               </Field>
-              <Field label="0g_token_id" hint="iNFT token id on 0G Chain.">
-                <Input
-                  value={tokenId}
-                  onChange={(e) => setTokenId(e.target.value)}
-                  className="font-mono text-[12px]"
-                />
-              </Field>
               <Field label="version" hint="semver, e.g. 0.1.0">
                 <Input
                   value={version}
@@ -183,6 +274,10 @@ export function AgentBuilderForm() {
                   className="font-mono text-[12px]"
                 />
               </Field>
+              <div className="text-[11.5px] text-ink-3">
+                <code className="font-mono">0g_token_id</code> is set
+                automatically from the iNFT minted on publish.
+              </div>
             </div>
           </Disclosure>
         </div>
@@ -202,41 +297,54 @@ export function AgentBuilderForm() {
             }
           >
             <div className="bg-surface-2 border border-dashed border-border-strong rounded-md p-3 font-mono text-[12px] text-ink-2 break-all">
-              <div className="text-ink-4">
-                // Specialists are discoverable via ENS
-              </div>
+              <div className="text-ink-4">{"// Specialists are discoverable via ENS"}</div>
               {fullName}
             </div>
           </Disclosure>
-          <Disclosure title="0G Storage URI" icon="database" defaultOpen>
+          <Disclosure title="0G iNFT URL" icon="database" defaultOpen>
             <div className="bg-surface-2 border border-dashed border-border-strong rounded-md p-3 font-mono text-[12px] text-ink-2 break-all">
-              <div className="text-ink-4">// Encrypted memory + task logs</div>
-              {workspaceUri}
+              <div className="text-ink-4">{"// 0g_workspace_uri text record · points at the iNFT on chainscan-galileo"}</div>
+              {workspaceUriPreview}
             </div>
           </Disclosure>
           <Disclosure title="AXL public key" icon="key">
             <div className="bg-surface-2 border border-dashed border-border-strong rounded-md p-3 font-mono text-[12px] text-ink-2 break-all">
-              <div className="text-ink-4">
-                // Used for inter-agent traffic auth
-              </div>
+              <div className="text-ink-4">{"// Used for inter-agent traffic auth"}</div>
               {axlPubkey.length > 26
                 ? `${axlPubkey.slice(0, 18)}…${axlPubkey.slice(-8)}`
                 : axlPubkey}
             </div>
           </Disclosure>
-          <Disclosure title="iNFT identity" icon="cube">
+          <Disclosure
+            title="iNFT identity"
+            icon="cube"
+            defaultOpen={mintTokenId !== null}
+            right={
+              mintTokenId !== null ? (
+                <Badge variant="success" mono dot>
+                  #{mintTokenId}
+                </Badge>
+              ) : mintStep === "minting" ? (
+                <Badge variant="info" mono>
+                  minting
+                </Badge>
+              ) : (
+                <Badge variant="neutral" mono>
+                  pending
+                </Badge>
+              )
+            }
+          >
             <div className="bg-surface-2 border border-dashed border-border-strong rounded-md p-3 font-mono text-[12px] text-ink-2 break-all">
-              <div className="text-ink-4">
-                // Ownership, memory pointer, payment rules
-              </div>
-              iNFT #{tokenId} · owner:{" "}
-              {shortAddress(status.connectedAddress ?? null)}
+              <div className="text-ink-4">{"// ERC-721 on 0G Galileo · ownership, memory, payment rules"}</div>
+              {inftPreviewText}
             </div>
           </Disclosure>
 
           {!status.connectedAddress ? (
             <div className="text-[11.5px] text-ink-3 mt-1">
-              Connect a wallet to publish — it will own the new ENS subname.
+              Connect a wallet to publish — it will own the new iNFT and the
+              ENS subname.
             </div>
           ) : status.isLoading ? (
             <div className="text-[11.5px] text-ink-3">
@@ -269,11 +377,7 @@ export function AgentBuilderForm() {
                 onClick={onPublish}
                 disabled={!labelValid || isBusy || !status.canRegister}
               >
-                {step === "registering"
-                  ? "Sign in wallet…"
-                  : step === "confirming"
-                    ? "Confirming…"
-                    : "Publish Specialist"}
+                {buttonLabel}
               </Button>
             )}
             <Button variant="secondary" icon="play">
@@ -286,14 +390,24 @@ export function AgentBuilderForm() {
             )}
           </div>
 
-          {txHash && (
+          {mintTxHash && (
             <div>
-              <ExplorerLink hash={txHash} label="register tx" />
+              <ZeroGTxLink hash={mintTxHash} label="iNFT mint tx (0G)" />
             </div>
           )}
-          {error && (
+          {registerTxHash && (
+            <div>
+              <SepoliaTxLink hash={registerTxHash} label="ENS register tx" />
+            </div>
+          )}
+          {mintError && (
             <div className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-[12px] text-red-800 break-words">
-              {error.message}
+              iNFT mint failed: {mintError}
+            </div>
+          )}
+          {registerError && (
+            <div className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-[12px] text-red-800 break-words">
+              {registerError.message}
             </div>
           )}
           {result && (
@@ -303,13 +417,20 @@ export function AgentBuilderForm() {
                 Owner:{" "}
                 <span className="font-mono">{shortAddress(result.owner)}</span>
               </div>
+              {mintTokenId !== null && (
+                <div>
+                  iNFT: <span className="font-mono">#{mintTokenId}</span>
+                </div>
+              )}
             </div>
           )}
 
           <div className="text-[11.5px] text-ink-3">
-            Publishing mints a wrapped ENS subname under {status.parentDomain},
-            sets six text records, and transfers it to your wallet — one
-            signature.
+            Publishing first mints an ERC-721 iNFT on 0G Galileo to your wallet
+            (server-signed, no chain switch), then registers the ENS subname
+            under {status.parentDomain} on Sepolia with the iNFT&rsquo;s token
+            id baked into <code className="font-mono">0g_token_id</code> — one
+            wallet signature on Sepolia.
           </div>
         </div>
       </div>
