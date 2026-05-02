@@ -20,7 +20,9 @@
     "test:browser": "tsx scripts/test-browser.ts",
     "demo:full": "tsx scripts/demo-full.ts",
     "demo:popup": "tsx scripts/demo-popup.ts",
-    "demo:cli-only": "tsx scripts/demo-cli-only.ts"
+    "demo:cli-only": "tsx scripts/demo-cli-only.ts",
+    "chrome:debug": "bash scripts/chrome-debug.sh",
+    "demo:cdp": "tsx scripts/demo-cdp.ts"
   },
   "dependencies": {
     "@0gfoundation/0g-ts-sdk": "^1.2.6",
