@@ -343,6 +343,8 @@ The demo is a sequence of URL opens in the user's default Chrome, paced with aut
 | `npm run demo:after` | half 2: EC2 dashboard → launch wizard → Instances dashboard. 7s between each. Run after `demo:before` returns. |
 | `npm run demo:cdp` | full flow with auto-click. Connects to debug Chrome, navigates by CDP, clicks `#root_account_signin`, polls URL until sign-in detected, continues. Requires `chrome:debug` first. |
 | `npm run demo:popup` | walks 4 URLs then spawns a separate Windows Terminal / Terminal.app window that runs `demo:cli-only` (the SDK execution part) — "hacker movie" two-window aesthetic. |
+| `npm run demo:final` | **the working end-to-end stage demo (macOS)**: walks 3 EC2 console pages, then `osascript` spawns Terminal.app running `demo:cli-aws`. Uses pure `aws` CLI + system `ssh` — no `@aws-sdk` or `ssh2` deps required. |
+| `npm run demo:cli-aws` | the AI-execution half: `aws sts get-caller-identity` → ensure keypair (`openclaw-demo-key`, PEM at `axl/openclaw-demo-key.pem`) → ensure SG (`openclaw-demo-sg`, SSH 22 from anywhere) → resolve latest AL2023 AMI via SSM → `run-instances` (t3.micro) → wait running → wait sshd 30s → `ssh -tt` interactive session that prints `/etc/motd`, fakes a `[ec2-user@host ~]$` prompt before each command, installs `git nodejs npm`, `git clone https://github.com/derek2403/openclaw.git`, drops `.env` (base64-piped from the local Mac's `.env`), runs `bash start.sh`. Designed to be spawned by `demo:final` but standalone-runnable. |
 | `npm run chrome:debug` | one-time per session: launches Chrome with `--remote-debugging-port=9222` + dedicated user-data-dir (`C:\temp\rh-demo-chrome` on WSL/Win, `~/.rh-demo-chrome` on macOS). User logs into AWS once in this Chrome; cookies persist. |
 | `npm run capture-urls` | scrapes fresh AWS OAuth + sign-in URLs from the running debug Chrome via CDP. Prints in shell-eval format. |
 
@@ -386,6 +388,17 @@ npm install --legacy-peer-deps @aws-sdk/client-ec2@^3 ssh2@^1.16 @types/ssh2
 ```
 
 Plus AWS access key in `~/.aws/credentials`, EC2 keypair `nanoclaw-key` saved as `axl/nanoclaw-key.pem` (chmod 600). Defaults: us-east-1, t2.micro, AMI `ami-0c02fb55956c7d316`.
+
+**The CLI-based path (`demo:final` / `demo:cli-aws`) is the working alternative** — same outcome (real EC2 launch + remote install) without any `@aws-sdk` or `ssh2` deps, since it shells out to the system `aws` and `ssh` binaries. If you only need the demo flow, prefer this path. If you need programmatic SDK access from inside the AXL/MCP server (e.g. for `aws.ts` to be reachable over the mesh), you still need to reinstall the SDK deps as above.
+
+### Gotchas for `demo:cli-aws`
+
+- **Required IAM permissions.** The IAM user needs `AmazonEC2FullAccess` + `AmazonSSMReadOnlyAccess` (or a custom policy with `ec2:CreateKeyPair`, `ec2:RunInstances`, `ec2:Describe*`, `ec2:CreateSecurityGroup`, `ec2:AuthorizeSecurityGroupIngress`, `ec2:CreateTags`, `ec2:TerminateInstances`, `ssm:GetParameter`). Without SSM access the AMI lookup fails.
+- **AWS Free Plan only allows specific instance types.** New accounts (post-2024 Free Plan) reject `t2.micro` with `InvalidParameterCombination`. The script defaults to `t3.micro`. If even that's rejected, run `aws ec2 describe-instance-types --filters Name=free-tier-eligible,Values=true --region us-east-1` to see what's allowed.
+- **Default VPC must exist** in the chosen region. `aws ec2 describe-vpcs --filters Name=isDefault,Values=true --region us-east-1` should return a VPC. If it doesn't, the script needs `--subnet-id`.
+- **`.env` is base64-piped, not scp'd.** The local `.env` is read on Mac, base64-encoded, and inlined inside the install script's bash payload. Decoded on EC2, written to `~/openclaw/.env`, chmod 600. Sidesteps shell-escape issues with newlines/quotes/specials in secrets. Logs never contain the decoded content because the install script runs over an interactive `ssh -tt` session.
+- **Keypair recovery.** If the AWS keypair `openclaw-demo-key` exists but the local PEM at `axl/openclaw-demo-key.pem` is missing, the script aborts (it can't re-mint a PEM for an existing key). Recover with `aws ec2 delete-key-pair --key-name openclaw-demo-key --region us-east-1` then re-run.
+- **Long-running `start.sh` keeps SSH open.** The interactive `ssh -tt` doesn't return until the remote command exits. If `start.sh` runs a server in the foreground, the popup terminal stays connected — that's good for the demo (audience sees the server log live). To detach cleanly: type `~.` in the SSH session, or have `start.sh` background its server with `nohup … &`.
 
 ## What's parked, ready to wire (the AXL/MCP integration)
 
@@ -459,18 +472,25 @@ telegram-bot/
 
 ## How it integrates with Phase 2a
 
-The `install_telegram_bot` MCP tool (still to be wired into [`axl/mcp-servers/aws.ts`](axl/mcp-servers/aws.ts)) becomes a thin SSH wrapper. Three calls, all gated by the same MCP permission prompt as `walk_before` / `launch_instance`:
+The bot lives at [github.com/derek2403/openclaw](https://github.com/derek2403/openclaw) as its own repo (extracted from `telegram-bot/` for distribution). The **working integration path is `demo:cli-aws`** ([`scripts/demo-cli-aws.ts`](scripts/demo-cli-aws.ts)), which does the equivalent of:
 
 ```bash
-ssh ec2-user@<ip> 'sudo yum install -y nodejs git'
-ssh ec2-user@<ip> 'git clone <repo>/open && cd open/telegram-bot && cp .env.example .env'
-ssh ec2-user@<ip> "cd open/telegram-bot && \
-  sed -i 's|^BOT_TOKEN=.*|BOT_TOKEN=$BOT_TOKEN|' .env && \
-  sed -i 's|^0G_PRIVATE_KEY=.*|0G_PRIVATE_KEY=$ZG_KEY|' .env"
-ssh ec2-user@<ip> 'cd open/telegram-bot && nohup ./start.sh > openclaw.log 2>&1 &'
+sudo dnf install -y git nodejs npm
+git clone https://github.com/derek2403/openclaw.git ~/openclaw
+cd ~/openclaw
+cat <<'EOF' > .env   # base64-piped from the local Mac's .env
+BOT_TOKEN=…
+0G_PRIVATE_KEY=…
+EOF
+chmod 600 .env
+bash start.sh
 ```
 
-After that, the user opens [t.me/RightHandAI_OpenClaw](https://t.me/RightHandAI_OpenClaw), sends `/start`, and chats. Every reply is qwen inference billed against the 0G ledger.
+…all over a single `ssh -tt` session that streams the remote AL2023 motd + a faked `[ec2-user@host ~]$ <cmd>` prompt before each command, so the audience watches it run live in the popup terminal. The `.env` is base64-encoded on the Mac, inlined into the install script, and decoded on EC2 — no scp, no leaked secrets in logs.
+
+The `install_telegram_bot` MCP tool in [`axl/mcp-servers/aws.ts`](axl/mcp-servers/aws.ts) (still to be wired) is the AXL-routed equivalent: same SSH calls, but invoked as a JSON-RPC tool over the AXL mesh + MCP router instead of from a local Mac terminal. When it's wired, it should `child_process.spawn('tsx', ['scripts/demo-cli-aws.ts'])` rather than re-implementing the SSH dance.
+
+After install, the user opens [t.me/RightHandAI_OpenClaw](https://t.me/RightHandAI_OpenClaw), sends `/start`, and chats. Every reply is qwen inference billed against the 0G ledger.
 
 ## 0G Compute integration
 
@@ -513,6 +533,106 @@ The vibe is borrowed from [github.com/openclaw/openclaw](https://github.com/open
 - **In-memory chat history wipes on restart.** Persist to Redis if you need durability; PM2/nohup don't preserve it.
 - **One Telegram polling consumer per bot token.** If you migrate machines or run a duplicate, the second one fails with `409 Conflict`. To clear: `curl https://api.telegram.org/bot$BOT_TOKEN/deleteWebhook`.
 - **The 0G SDK references `window.location` at module-load.** `bot.ts` shims `globalThis.window` before importing the SDK — don't reorder those imports.
+
+---
+
+# Chat UI prototype (Right-Hand workspace + host console)
+
+The user-facing front of Right-Hand AI: a chat interface that simulates dispatching tasks to ENS-discovered specialists, plus a host console for the seller side. Currently mocked — no real backend wiring. Mock data lives in [`lib/mock-data.ts`](lib/mock-data.ts), the orchestration is a `setTimeout`-driven state machine in [`lib/task-runner.ts`](lib/task-runner.ts). It's the demo narrative layer, not the production runtime.
+
+## Pages
+
+| route               | purpose                                                                                  |
+|---------------------|------------------------------------------------------------------------------------------|
+| `/`                 | original AXL transport demo — preserved from Phase 1                                     |
+| `/landing`          | new chat interface — input + mode picker (Solo / Pair / Swarm / Deep) + progress sidebar |
+| `/host`             | host console — agent grid, recent invocations, earnings, builder form                    |
+| `/agents/[id]`      | agent detail — identity & infra, runtime logs, task history, pricing rules               |
+| `/ens-test`         | (existing) ENS register/read                                                             |
+| `/tasks`            | (existing) `TaskMarket` post / sign-on                                                   |
+
+## File map
+
+```
+components/
+  ui/         — primitives: Button, Badge, Card, Input, Tabs, Disclosure, Icon
+  layout/     — AppShell (sidebar+topbar grid), Sidebar, TopBar, HostDashboard
+  chat/       — ChatInterface (split: messages + TaskProgressPanel),
+                ChatInput, ChatMessage, ModePicker, Welcome, ClarifyCard
+  host/       — AgentCard, AgentBuilderForm, AgentStatusTable, EarningsPanel
+  agents/     — AgentProfile, AgentRuntimePanel, AgentSkillTags
+lib/
+  mock-data.ts        — HOSTED_AGENTS, RECENT_INVOCATIONS, EXAMPLE_PROMPTS, MODES, NAV_*, HISTORY
+  build-script.ts     — buildScript(prompt, mode): TaskScript — branches by prompt regex
+  task-runner.ts      — useTaskRunner() React hook, the mock orchestration state machine
+types/index.ts        — shared TS types (HostedAgent, TaskScript, ClarifyState, AssistantMessage, …)
+```
+
+## Two interaction patterns inside the chat
+
+**Approve/Deny** (used by Japan / WiFi / AWS-config / default flows): the assistant message renders an `ApprovalCard` showing one shell command. User clicks Approve or Deny. Used when the agent has fully decided and just wants permission for a sensitive action.
+
+**Clarify** (used by the AWS+OpenClaw demo flow): when `script.clarifies` is set, `task-runner` pauses the run mid-flight and renders one [`ClarifyCard`](components/chat/ClarifyCard.tsx) per round. Each card has N multiple-choice questions; the user picks one option per question and clicks Continue. Modeled after Claude Code's `AskUserQuestion`. When all questions in a card are answered, the run resumes — and the final report's `reportItems` get template-interpolated with the picks (`{region}` → `us-east-1`, `{instanceType}` → `t3.micro`, etc.).
+
+The AWS+OpenClaw demo runs **two** clarify rounds, one per specialist:
+
+```
+prompt: "Deploy OpenClaw on a fresh EC2 instance"
+  ↓
+[Resolving specialists via ENS] → [Establishing AXL channels] → [Dispatching to AWS Provisioning]
+  ↓
+ClarifyCard #1 (AWS Provisioning Specialist):
+  Q: Which AWS region?       → us-east-1 / us-west-2 / eu-west-1 / ap-southeast-1
+  Q: What instance size?     → t3.micro / t3.small / t3.medium
+  ↓ Continue
+[Dispatching to OpenClaw Deployment]
+  ↓
+ClarifyCard #2 (OpenClaw Deployment Specialist):
+  Q: Which OpenClaw version? → 0.6.2 / 0.7.0-rc
+  Q: Admin password?         → Auto-generated / Prompted on install
+  ↓ Continue
+[Synthesizing final report]
+  ↓
+Final report — items interpolated with picks
+```
+
+## task-runner state machine
+
+[`useTaskRunner()`](lib/task-runner.ts) returns `{ messages, run, busy, pendingApproval, pendingClarify, submit, resolveApproval, resolveClarify }`.
+
+Two flow paths chosen by whether `script.clarifies` is present:
+
+- **Approval flow**: step animation → approval card → on approve: more step animation → final report.
+- **Clarify flow**: step animation → clarify[0] card → on submit: step animation + clarify[1] card → on submit: synthesis step → final report. Handles N clarify rounds (one per specialist).
+
+Timing is `setTimeout`-driven via an `at(ms, fn)` helper. All timers clear on unmount or new submit. Phases progress through the `RunPhase` enum (`routing → discovering → executing → clarify | approval → finishing → done`).
+
+## How prompts route to flows
+
+[`buildScript(prompt, mode)`](lib/build-script.ts) regex-matches the prompt and returns a `TaskScript`:
+
+| prompt regex                                        | flow                                                                  |
+|-----------------------------------------------------|-----------------------------------------------------------------------|
+| `/openclaw.*ec2|ec2.*openclaw|deploy.*openclaw/i`   | AWS+OpenClaw clarify flow (2 specialists, 2 clarify rounds)           |
+| `/japan|trip/i`                                     | Japan trip planner approval flow (3 specialists)                      |
+| `/wifi|wi-?fi/i`                                    | WiFi diagnostic approval flow (2 specialists)                         |
+| `/aws|cloud/i` (without openclaw)                   | AWS config approval flow (2 specialists)                              |
+| (default)                                           | OpenClaw bootstrap approval flow (3 specialists)                      |
+
+`mode` (Solo/Pair/Swarm/Deep) trims or extends the specialist list **after** the branch picks them.
+
+## Tailwind setup
+
+The repo runs **Tailwind v4** (`@import "tailwindcss"` in `globals.css`, `@tailwindcss/postcss` plugin). Custom theme tokens live in a `@theme` block in [`styles/globals.css`](styles/globals.css), **not a `tailwind.config.ts`**. Tokens: `bg-bg`, `bg-surface{,-2,-3}`, `text-ink{,-2,-3,-4}`, `border-border{,-strong}`, `bg-accent{,-soft,-fg}`, `shadow-{xs,sm,md}`, `text-2xs`. Fonts: Inter + JetBrains Mono via Google Fonts import in the same file.
+
+## Gotchas
+
+- **All data is mocked.** `HOSTED_AGENTS` and `RECENT_INVOCATIONS` in `lib/mock-data.ts` are fake — not derived from ENS or any contract. By design — the chat UI is the *narrative* layer; actual agent execution lives in Phase 2a's `axl/` + the `demo:final` pipeline.
+- **`AppShell`'s grid item children need `h-full` to span row height.** [`TaskProgressPanel`](components/chat/TaskProgressPanel.tsx)'s `<aside>` has `h-full` on it — without that, the content collapses to its natural height while the wrapper grid cell stays full-height, leaving an unstyled gap below. Same pattern applies to any new aside-style panel under `AppShell`.
+- **Per-message clarify state is preserved on the `AssistantMessage`** as `clarifies: ClarifyState[]`. Once answered, the card locks (radio shows the pick, no Continue button) — re-rendering the message later still shows the chosen answers. `pendingClarify` is just an index pointer to the active card.
+- **Path alias is `@/*` from repo root.** Imports look like `@/components/chat/ClarifyCard`. Configured in `tsconfig.json`.
+- **The chat UI is not at `/`.** When it landed, the original AXL transport demo at `/` was preserved; the new chat lives at `/landing`. If you ever want to promote the chat to `/`, move the AXL demo to a sub-route first — don't overwrite.
+- **`_app.tsx` wraps everything in `<Providers>` (RainbowKit/wagmi/react-query) AND `<Head>`** with title + viewport. Don't drop either when editing.
 
 ---
 
