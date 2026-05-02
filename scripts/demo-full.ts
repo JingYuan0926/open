@@ -29,7 +29,7 @@ const NANOCLAW_INSTALL_CMD =
   process.env.NANOCLAW_INSTALL_CMD ??
   `echo "nanoclaw installed: $(date)" > /tmp/nanoclaw.log && cat /tmp/nanoclaw.log && uname -a`;
 
-const BROWSER_DELAY = parseInt(process.env.DELAY_MS ?? "5000", 10);
+const BROWSER_DELAY = parseInt(process.env.DELAY_MS ?? "7000", 10);
 const KEEP = process.env.KEEP === "1";
 const MOCK = process.env.MOCK === "1";
 
