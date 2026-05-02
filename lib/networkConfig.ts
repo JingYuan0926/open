@@ -15,8 +15,10 @@ export const ENS_PUBLIC_RESOLVER_ADDRESS = '0xE99638b40E4Fff0129D56f03b55b6bbC4B
 // SpecialistRegistrar on Sepolia — approved by the parent owner of
 // righthand.eth on NameWrapper. Anyone can call register() to mint a wrapped
 // subname (and have it transferred to them) in a single transaction.
+// v2 deployment exposes `getOwned(address)` for one-call discovery (used by
+// `useMySpecialists`). Older versions without it return zero specialists.
 export const SPECIALIST_REGISTRAR_ADDRESS =
-    '0x03e69a73090A7E8392bC54BC24316a326020B128' as const;
+    '0xE8E40daf718010e3B5d07cd4A0b22333757D77Dd' as const;
 
 // TaskMarket on Sepolia — approved by the parent owner of righthand.eth on
 // NameWrapper. Each postTask also mints task-{id}.righthand.eth and writes
