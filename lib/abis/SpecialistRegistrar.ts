@@ -46,6 +46,29 @@ export const SPECIALIST_REGISTRAR_ABI = [
         type: "function",
     },
     {
+        inputs: [{ name: "owner", type: "address" }],
+        name: "getOwned",
+        outputs: [
+            {
+                name: "",
+                type: "tuple[]",
+                components: [
+                    { name: "label", type: "string" },
+                    { name: "node", type: "bytes32" },
+                ],
+            },
+        ],
+        stateMutability: "view",
+        type: "function",
+    },
+    {
+        inputs: [{ name: "owner", type: "address" }],
+        name: "ownedCount",
+        outputs: [{ type: "uint256" }],
+        stateMutability: "view",
+        type: "function",
+    },
+    {
         anonymous: false,
         inputs: [
             { indexed: true, name: "node", type: "bytes32" },
