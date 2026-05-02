@@ -48,10 +48,11 @@ const SIGNIN_URL = process.env.SIGNIN_URL ?? "https://signin.aws.amazon.com/cons
 const DEFAULT_STEPS: Step[] = [
   { label: "AWS free-tier landing", pause: false,
     url: "https://aws.amazon.com/free/" },
-  { label: "AI navigating to sign-in (OAuth flash)", pause: false,
-    url: SIGNIN_URL },
-  // ★ PAUSE here — sign-in form, user types root email + password
-  { label: "AI clicked root, you type email + password here", pause: true,
+  // Single sign-in step. Chrome redirects /console through OAuth → sign-in
+  // form. Don't open this URL twice — the second tab catches the redirect
+  // mid-flight and shows the OAuth URL instead of the sign-in form.
+  // ★ PAUSE here — user types root email + password, hits Enter when logged in
+  { label: "Sign in (you type root email + password here)", pause: true,
     url: SIGNIN_URL },
   { label: "Console home", pause: false,
     url: "https://us-east-1.console.aws.amazon.com/console/home?region=us-east-1#" },
