@@ -124,6 +124,74 @@ If the parent domain itself changes you also need to redeploy — `parentNode` i
 
 ---
 
+# ENS task marketplace
+
+`TaskMarket` is an escrow-backed task board where every task is **also a wrapped ENS subname** at `task-{id}.righthand.eth` carrying records that describe it. The contract owns the subname for the task's lifetime so it can update the `status` record on lifecycle transitions. Budget is held in escrow at post time and split equally among everyone who signs on at complete time, with pull-pattern withdrawals.
+
+Each task subname carries six records on the public resolver:
+
+| key           | value                                                                |
+|---------------|----------------------------------------------------------------------|
+| `description` | the human-readable goal                                              |
+| `skills`      | comma-separated skill tags (matches the specialist `skills` record)  |
+| `budget`      | wei amount as a decimal string                                       |
+| `deadline`    | unix seconds as a decimal string                                     |
+| `creator`     | creator address as 0x… hex string                                    |
+| `status`      | `open` → `completed` or `cancelled`                                  |
+
+## On-chain components
+
+| contract     | address (Sepolia)                              | role                                                  |
+|--------------|------------------------------------------------|-------------------------------------------------------|
+| `TaskMarket` | `0x940883516834A5e14036fA86AA0f5Ec649BfAdf9`   | escrow + per-task ENS subname mint + records + status |
+
+The parent owner (`0x7dEC1014…`) has called `NameWrapper.setApprovalForAll(TaskMarket, true)`. This is **independent** of the `SpecialistRegistrar` approval — both contracts are operators on the same parent. Use `contracts/scripts/approve-registrar.ts` with `REGISTRAR_ADDRESS=0x...` to (re-)approve either contract.
+
+## Lifecycle
+
+1. **`postTask(description, skillTags, deadline, maxSpecialists) payable`** — caller locks `msg.value` as the budget. Contract checks its own approval, computes `task-{id}`, refuses with `LabelAlreadyTaken` if that subname is already wrapped, `setSubnodeRecord` to itself using `parentExpiry`, writes the six text records, pushes a `Task` (with `ensNode`), emits `TaskPosted(taskId, creator, ensNode, label)`.
+2. **`signOn(taskId)`** — any address. Reverts on `TaskNotOpen`, `DeadlinePassed`, `TaskFull`, `AlreadySignedOn`. No skill check on-chain — the UI filters.
+3. **`completeTask(taskId)`** — only the creator. Splits `budget / N` to each signed-on specialist's `withdrawable` balance; rounding dust returns to creator. Status flips to `Completed` and the `status` record is rewritten on the resolver.
+4. **`cancelTask(taskId)`** — only the creator, only while no specialists have signed on. Refunds budget to creator's `withdrawable`; status → `cancelled` on resolver.
+5. **`withdraw()`** — anyone with a positive `withdrawable` balance. CEI-ordered (zero balance, then `.call{value:…}("")`); a reverting recipient can't DoS anyone else.
+
+## Frontend
+
+| file                                                       | role                                                                                                                            |
+|------------------------------------------------------------|---------------------------------------------------------------------------------------------------------------------------------|
+| [`pages/tasks.tsx`](pages/tasks.tsx)                       | post-task form + paginated task cards (status, budget, deadline, slots, signed-on list) + per-role buttons + withdraw card     |
+| [`lib/tasks/useTaskMarket.ts`](lib/tasks/useTaskMarket.ts) | `useTasks` (batched `useReadContracts`), `usePostTask`, `useSignOnTask`, `useCompleteTask`, `useCancelTask`, `useWithdraw`, `useWithdrawable` |
+| [`lib/abis/TaskMarket.ts`](lib/abis/TaskMarket.ts)         | ABI + `TASK_STATUS` enum (`Open=0, Completed=1, Cancelled=2`)                                                                   |
+
+Each task card links its ENS name to `/api/ens/read-specialist?name=task-{id}.righthand.eth` so the resolver records can be inspected immediately.
+
+## Files added on top of the specialist registry
+
+```
+contracts/
+  contracts/TaskMarket.sol               # escrow + per-task subname + status updates
+  ignition/modules/TaskMarket.ts         # Ignition deploy module (parentNode param)
+lib/
+  abis/TaskMarket.ts
+  tasks/
+    useTaskMarket.ts
+pages/
+  tasks.tsx                              # /tasks UI
+```
+
+`TASK_MARKET_ADDRESS` is hardcoded in `lib/networkConfig.ts` (deployment artifact, same convention as `SPECIALIST_REGISTRAR_ADDRESS`).
+
+## Gotchas
+
+- **TaskMarket and SpecialistRegistrar share the parent (`righthand.eth`).** Specialist labels are free-form, task labels are `task-{id}` — they shouldn't normally collide. But `SpecialistRegistrar` still lacks the `isWrapped` check, so a specialist could deliberately register `task-1234` and block that future task post (`TaskMarket` reverts with `LabelAlreadyTaken`). Fix when you redeploy `SpecialistRegistrar`, or move tasks to a separate parent like `tasks.righthand.eth`.
+- **Status records are point-in-time, written only on create/complete/cancel.** `signOn` does **not** rewrite the resolver — the live specialist roster lives on-chain via `getTaskSpecialists(taskId)`. Adding a `setText` per signOn is ~30k extra gas for marginal off-chain value.
+- **No deadline enforcement on `completeTask`.** Creator can complete after the deadline; specialists who signed on have no on-chain recourse if the creator stays silent. A `claimAfterDeadline` would fix this.
+- **Equal-split, all-or-nothing payout.** No partial completion, no weighted payouts. Off-chain coordination decides who does what; on-chain just splits the pot.
+- **Creator-vs-specialist guard is UI-only.** The contract does not block creators from `signOn`'ing their own task; the page does (`!isCreator`). A direct contract call from the creator's wallet would succeed.
+- **Posting is expensive (~400k+ gas).** One `setSubnodeRecord` + six `setText` calls per post. Acceptable on testnet; consider trimming or chain choice for mainnet.
+
+---
+
 # AXL transport layer (Phase 1, working)
 
 A 3-Mac demo proving Right-Hand AI's P2P transport works across machines. Each Mac runs an AXL node + an Express A2A agent server (`@a2a-js/sdk`). All 3 peer to **Gensyn's public bootstrap nodes**, join the global Yggdrasil mesh, and address each other by ed25519 pubkey. No LAN coordination, no firewall fights, no IP commits — works across any networks with internet access.
@@ -385,7 +453,8 @@ Phase 2a wires execution. Phase 2b turns the demo into the real product flow: **
 
 ## What needs building (Phase 2b scope)
 
-- **Task contract on Sepolia (or 0G Chain).** New contract `TaskMarket` with `postTask(skillTags, budget, deadline)` → emits `TaskPosted(taskId, ...)`. Specialists listen for these and call `signOn(taskId)` to claim.
+> **Note:** `TaskMarket` is now shipped — see the **ENS task marketplace** section above. The bullets below are what's still pending.
+
 - **Specialist subscription daemon.** Each OpenClaw specialist runs a watcher (background process or AXL-registered hook) that filters `TaskPosted` events by skill match. On match, it auto-signs.
 - **Coordinator selection.** First-N-to-sign-on, or weighted by reputation/price. Probably runs as one of the agent roles in the AXL mesh — same agent.ts shape, different agent card.
 - **More MCP services beyond `aws`.** Phase 2a only ships the `aws` service. Add `filesystem`, `terminal`, `git`, etc. — each a sibling of `axl/mcp-servers/aws.ts` that self-registers with the router.
@@ -396,13 +465,7 @@ Phase 2a wires execution. Phase 2b turns the demo into the real product flow: **
 
 ```
 contracts/
-  contracts/TaskMarket.sol               # postTask, signOn, completeTask events
   contracts/RoyaltyRouter.sol            # per-call payment splits
-  ignition/modules/TaskMarket.ts
-lib/
-  task-market.ts                         # viem helpers: postTask, watchTaskPosted
-  ens/
-    useTaskMarket.ts                     # wagmi hook for posting tasks
 axl/
   coordinator.ts                         # agent role variant: orchestrates swarm
   specialists/
@@ -414,10 +477,6 @@ axl/
 connector/                               # the eventual single-binary connector
   permission-ui.tsx                      # Electron/Tauri permission UI
   bundle.json                            # AXL + MCP servers + UI packaging
-pages/
-  api/tasks/
-    post.ts                              # browser → contract → ENS event
-    list.ts                              # active tasks (eth_getLogs)
 ```
 
 ## Key design notes

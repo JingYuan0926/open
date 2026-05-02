@@ -18,6 +18,12 @@ export const ENS_PUBLIC_RESOLVER_ADDRESS = '0xE99638b40E4Fff0129D56f03b55b6bbC4B
 export const SPECIALIST_REGISTRAR_ADDRESS =
     '0x03e69a73090A7E8392bC54BC24316a326020B128' as const;
 
+// TaskMarket on Sepolia — approved by the parent owner of righthand.eth on
+// NameWrapper. Each postTask also mints task-{id}.righthand.eth and writes
+// description / skills / budget / deadline / creator / status text records.
+export const TASK_MARKET_ADDRESS =
+    '0x940883516834A5e14036fA86AA0f5Ec649BfAdf9' as const;
+
 // Parent domain that owns the specialist subdomains. Must be a wrapped name
 // whose owner (or NameWrapper-approved operator) is the connected wallet.
 // Read NEXT_PUBLIC_ first so the value is available in the browser; fall back
