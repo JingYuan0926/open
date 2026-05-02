@@ -17,14 +17,74 @@ function shortAddr(a: string) {
   return `${a.slice(0, 6)}…${a.slice(-4)}`;
 }
 
-function Stat({ label, value }: { label: string; value: React.ReactNode }) {
+function Copyable({
+  value,
+  title,
+  className,
+  children,
+}: {
+  value: string;
+  title?: string;
+  className?: string;
+  children: React.ReactNode;
+}) {
+  const [copied, setCopied] = React.useState(false);
+  const handle = (e: React.MouseEvent | React.PointerEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    if (e.nativeEvent && typeof e.nativeEvent.stopImmediatePropagation === "function") {
+      e.nativeEvent.stopImmediatePropagation();
+    }
+    if (!value) return;
+    navigator.clipboard
+      .writeText(value)
+      .then(() => {
+        setCopied(true);
+        setTimeout(() => setCopied(false), 1200);
+      })
+      .catch(() => {});
+  };
+  return (
+    <button
+      type="button"
+      onPointerDown={(e) => e.stopPropagation()}
+      onClick={handle}
+      title={copied ? "Copied!" : title ?? `Copy ${value}`}
+      aria-label={title ?? `Copy ${value}`}
+      className={`inline-flex items-center gap-1 text-left rounded px-1 -mx-1 cursor-copy hover:bg-surface-3 transition-colors ${className ?? ""}`}
+    >
+      <span className="truncate">{children}</span>
+      <Icon
+        name={copied ? "check" : "copy"}
+        size={11}
+        className={`shrink-0 ${copied ? "text-emerald-500" : "text-ink-3"}`}
+      />
+    </button>
+  );
+}
+
+function Stat({
+  label,
+  value,
+  copyValue,
+}: {
+  label: string;
+  value: React.ReactNode;
+  copyValue?: string;
+}) {
   return (
     <div className="bg-surface-2 border border-border rounded-md px-2.5 py-1.5">
       <div className="text-[10.5px] text-ink-4 uppercase tracking-wider">
         {label}
       </div>
       <div className="text-[12.5px] font-medium tabular-nums text-ink mt-0.5 truncate">
-        {value}
+        {copyValue ? (
+          <Copyable value={copyValue} title={`Copy ${label.toLowerCase()}`}>
+            {value}
+          </Copyable>
+        ) : (
+          value
+        )}
       </div>
     </div>
   );
@@ -50,15 +110,13 @@ function AgentListItem({
   return (
     <Card className="p-4">
       <div className="flex items-start gap-2 mb-1.5 flex-wrap">
-        <a
-          href={`/api/ens/read-specialist?name=${s.fullName}`}
-          target="_blank"
-          rel="noopener noreferrer"
-          className="font-mono text-[13px] text-ink hover:underline truncate"
-          title="Read this specialist's ENS records"
+        <Copyable
+          value={s.fullName}
+          title="Copy ENS name"
+          className="font-mono text-[13px] text-ink"
         >
           {s.fullName}
-        </a>
+        </Copyable>
         {s.records.version && (
           <Badge variant="info" mono>
             v{s.records.version}
@@ -72,7 +130,13 @@ function AgentListItem({
       </div>
       <div className="text-[11.5px] text-ink-3 mb-2.5">
         owned by{" "}
-        <span className="font-mono text-ink-2">{shortAddr(s.owner)}</span>
+        <Copyable
+          value={s.owner}
+          title="Copy owner address"
+          className="font-mono text-ink-2"
+        >
+          {shortAddr(s.owner)}
+        </Copyable>
       </div>
 
       {tags.length > 0 ? (
@@ -96,12 +160,18 @@ function AgentListItem({
         <Stat
           label="Price / call"
           value={s.records.price ? `${s.records.price} 0G` : "—"}
+          copyValue={s.records.price || undefined}
         />
         <Stat
           label="iNFT"
           value={s.records.tokenId ? `#${s.records.tokenId}` : "—"}
+          copyValue={s.records.tokenId || undefined}
         />
-        <Stat label="AXL pubkey" value={<span className="font-mono">{axlShort}</span>} />
+        <Stat
+          label="AXL pubkey"
+          value={<span className="font-mono">{axlShort}</span>}
+          copyValue={s.records.axlPubkey || undefined}
+        />
       </div>
 
       <div className="flex items-center gap-2 flex-wrap">

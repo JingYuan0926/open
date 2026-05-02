@@ -3,7 +3,7 @@ export type IconName =
   | "chat" | "tasks" | "agents" | "connector" | "settings" | "dashboard" | "earnings"
   | "send" | "plus" | "search" | "check" | "x" | "alert" | "shield" | "globe" | "cube"
   | "key" | "database" | "play" | "pause" | "refresh" | "edit" | "chevron-right"
-  | "chevron-down" | "arrow-up" | "arrow-up-right" | "bell" | "users" | "terminal" | "logout";
+  | "chevron-down" | "arrow-up" | "arrow-up-right" | "bell" | "users" | "terminal" | "logout" | "copy";
 
 export function Icon({ name, size = 16, className = "" }: { name: IconName; size?: number; className?: string }) {
   const p = { width: size, height: size, viewBox: "0 0 24 24", fill: "none", stroke: "currentColor", strokeWidth: 1.75, strokeLinecap: "round" as const, strokeLinejoin: "round" as const, className };
@@ -38,6 +38,7 @@ export function Icon({ name, size = 16, className = "" }: { name: IconName; size
     case "users": return (<svg {...p}><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.9M16 3.1a4 4 0 0 1 0 7.8"/></svg>);
     case "terminal": return (<svg {...p}><path d="M4 17l6-6-6-6M12 19h8"/></svg>);
     case "logout": return (<svg {...p}><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4M16 17l5-5-5-5M21 12H9"/></svg>);
+    case "copy": return (<svg {...p}><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>);
     default: return (<svg {...p}><circle cx="12" cy="12" r="9"/></svg>);
   }
 }
