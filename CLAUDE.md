@@ -295,116 +295,103 @@ scripts/
 
 ---
 
-# Phase 2a — MCP execution via AXL (working)
+# Phase 2a — local browser demo (working) + AXL/MCP routing (built, not yet wired)
 
-Phase 1 proved AXL **transport**. Phase 2a proves AXL **execution**: an agent on Mac B/C invokes a tool on Mac A (the user) via AXL's built-in `/mcp/<peer>/<service>` route. Each call shows a y/n approval prompt on the user's terminal before any action runs. Demo target: `agent-b` provisions an EC2 instance on the user's AWS account, then `agent-c` SSHes in and installs nanoclaw — both via MCP, both gated by user approval.
+Phase 1 proved transport. Phase 2a is the **demo of what an AI agent does on the user's machine**: walks AWS console pages → user signs in → continues to EC2 launch wizard. This currently runs **standalone on the user's machine** (no AXL involved). The next step is wiring it as an MCP service so a remote agent can trigger it via AXL.
 
-## Architecture
+## What's working today (standalone, on the user's machine)
+
+The demo is a sequence of URL opens in the user's default Chrome, paced with auto-advance (browser does fast pages) and a pause-for-Enter where the user actually has to act (typing AWS credentials).
+
+### npm scripts (all in `scripts/` as `tsx` files)
+
+| command | what it does |
+|---------|--------------|
+| `npm run test:browser` | self-contained 5-URL walk. Step 2 pauses for credentials; rest auto-advance. Pure `cmd.exe /c start chrome <url>` (or `open` on macOS). No setup. |
+| `npm run demo:before` | half 1: AWS landing → sign-in URL. Pauses on sign-in for user to type credentials, exits when they hit Enter. |
+| `npm run demo:after` | half 2: EC2 dashboard → launch wizard → Instances dashboard. 7s between each. Run after `demo:before` returns. |
+| `npm run demo:cdp` | full flow with auto-click. Connects to debug Chrome, navigates by CDP, clicks `#root_account_signin`, polls URL until sign-in detected, continues. Requires `chrome:debug` first. |
+| `npm run demo:popup` | walks 4 URLs then spawns a separate Windows Terminal / Terminal.app window that runs `demo:cli-only` (the SDK execution part) — "hacker movie" two-window aesthetic. |
+| `npm run chrome:debug` | one-time per session: launches Chrome with `--remote-debugging-port=9222` + dedicated user-data-dir (`C:\temp\rh-demo-chrome` on WSL/Win, `~/.rh-demo-chrome` on macOS). User logs into AWS once in this Chrome; cookies persist. |
+| `npm run capture-urls` | scrapes fresh AWS OAuth + sign-in URLs from the running debug Chrome via CDP. Prints in shell-eval format. |
+
+### Browser opener: cross-platform
+
+[`axl/mcp-servers/aws-helpers/browser.ts`](axl/mcp-servers/aws-helpers/browser.ts) — single `openUrl(url)` that detects platform:
+- macOS: `open -a "Google Chrome" <url>`
+- WSL / Win32: `cmd.exe /c start "" chrome <url>` (uses Windows App Paths registry to find Chrome)
+- Linux desktop: `google-chrome <url>` (or `xdg-open` with `BROWSER=default`)
+
+Override with `BROWSER=msedge|firefox|default` env var.
+
+### CDP client (no Playwright)
+
+[`scripts/cdp-helper.ts`](scripts/cdp-helper.ts) — minimal Chrome DevTools Protocol client over `WebSocket` (Node 21+ built-in, no `ws` package needed). Methods: `connect()`, `navigate(url)`, `click(selector)`, `waitForSelector(selector)`, `evaluate(expr)`, `getCurrentUrl()`, `getNavigationHistory()`. ~120 lines total. Used by `demo:cdp` and `capture-urls`.
+
+### URL handling
+
+The default sign-in URL is `https://signin.aws.amazon.com/console` (generic — AWS regenerates a fresh PKCE code_challenge on every visit). Don't try to hardcode the long `/oauth?...&code_challenge=...` deep-links: they're single-use, AWS invalidates them after one OAuth round-trip, every reuse returns `400 invalid_request`. This bit us multiple times during dev.
+
+If you want the actual deep-link URLs displayed for narrative, run `eval $(npm run --silent capture-urls)` to populate `SIGNIN_OAUTH_URL` / `SIGNIN_FORM_URL` env vars from the live AWS session, then run `npm run test:browser`.
+
+### Demo flow (default `test:browser` — no setup needed)
 
 ```
-agent-b/c Mac                       user's Mac (4 procs)                   AWS / browser
-─────────────                       ─────────────────────                  ──────────────
-
-$ npm run mcp:demo:launch                                                      
-  │                                                                            
-scripts/mcp-call.ts                                                            
-  │                                                                            
-  ├─ POST :9002/mcp/<u-pk>/aws ──► AXL node ─Yggdrasil─► AXL on user           
-                                                              │                
-                                                              ▼                
-                                                        mcp-router.py :9003    
-                                                              │                
-                                                              ▼                
-                                                  axl/mcp-servers/aws.ts :9100 
-                                                              │                
-                                                              ├─ permission prompt (y/n)
-                                                              │                
-                                                              ├──► child_process `open <url>` ──► default browser → AWS console
-                                                              ├──► @aws-sdk/client-ec2     ──► EC2 RunInstances
-                                                              └──► ssh2 exec                ──► EC2 instance
+1. https://aws.amazon.com/free/                                  [auto, 7s]
+2. https://signin.aws.amazon.com/console                          [WAIT]   ← user signs in
+3. https://us-east-1.console.aws.amazon.com/console/home?…#       [auto, 7s]
+4. https://us-east-1.console.aws.amazon.com/ec2/home?…#Home:      [auto, 7s]
+5. https://us-east-1.console.aws.amazon.com/ec2/home?…#LaunchInstances:   [done]
 ```
 
-## MCP service: `aws` (4 tools)
+After step 5, the launch-wizard page is open in Chrome. The narrative is "AI navigated to the wizard; instead of clicking through it manually, it'll call AWS RunInstances directly via SDK." That SDK call lives in `demo:cli-only` / `test:aws launch` (currently parked — see below).
 
-| tool | impl | what user sees |
-|------|------|----------------|
-| `open_console` | `open` shells out to user's default browser with hardcoded launch-wizard URL | AWS launch-instance wizard appears |
-| `launch_instance({name?})` | `@aws-sdk/client-ec2` `RunInstances` (AMI `ami-0c02fb55…`, t2.micro, sg `nanoclaw-demo-sg` opens 22, key `nanoclaw-key`) | terminal prints `{instance_id, public_ip}` after ~30s |
-| `show_in_console({instance_id})` | `open <instance-detail-URL>` (URL templated with the new ID) | browser navigates to the instance row |
-| `install_nanoclaw({instance_id, public_ip})` | `ssh2` SSH (key `axl/nanoclaw-key.pem`) → run `$NANOCLAW_INSTALL_CMD` (default: placeholder echo) | install output streamed to terminal |
+## What's built but not currently runnable
 
-URLs in [`axl/mcp-servers/aws-helpers/urls.ts`](axl/mcp-servers/aws-helpers/urls.ts) — swap deep-links for whatever console pages the demo narrative needs (each becomes its own approve-able call).
+[`axl/mcp-servers/aws.ts`](axl/mcp-servers/aws.ts), [`aws-helpers/ec2.ts`](axl/mcp-servers/aws-helpers/ec2.ts), [`aws-helpers/ssh.ts`](axl/mcp-servers/aws-helpers/ssh.ts) and [`scripts/test-aws-direct.ts`](scripts/test-aws-direct.ts) / [`scripts/demo-cli-only.ts`](scripts/demo-cli-only.ts) / [`scripts/demo-full.ts`](scripts/demo-full.ts) implement the SDK side: real EC2 RunInstances + ssh2 install + terminate. They imported `@aws-sdk/client-ec2` + `ssh2` which were dropped from `package.json`. To re-enable:
 
-## Request shape (verified against gensyn-ai/axl)
+```bash
+npm install --legacy-peer-deps @aws-sdk/client-ec2@^3 ssh2@^1.16 @types/ssh2
+```
+
+Plus AWS access key in `~/.aws/credentials`, EC2 keypair `nanoclaw-key` saved as `axl/nanoclaw-key.pem` (chmod 600). Defaults: us-east-1, t2.micro, AMI `ami-0c02fb55956c7d316`.
+
+## What's parked, ready to wire (the AXL/MCP integration)
+
+The full Phase 2a vision was: a remote agent on Mac B (`agent-b`) calls AXL's `/mcp/<user-peer>/aws` endpoint → AXL forwards through Yggdrasil to user's Mac → vendored `mcp-router.py` (port 9003) dispatches → `aws.ts` MCP server (port 9100) prompts approval → runs the demo flow.
+
+These pieces exist:
+- [`axl/mcp-router.py`](axl/mcp-router.py) — vendored verbatim from `gensyn-ai/axl/integrations/mcp_routing/`
+- [`axl/mcp-servers/aws.ts`](axl/mcp-servers/aws.ts) — Express MCP service exposing 4 tools (`open_console`, `launch_instance`, `show_in_console`, `install_nanoclaw`)
+- [`axl/mcp-servers/permission.ts`](axl/mcp-servers/permission.ts) — terminal y/n approval gate (serialised via promise chain so concurrent calls don't race on stdin)
+- [`scripts/mcp-call.ts`](scripts/mcp-call.ts) — sender CLI: `npm run mcp:call -- <role> <svc> <tool> '<args>'`
+- [`scripts/setup-axl.sh`](scripts/setup-axl.sh) already adds `router_addr` + `router_port=9003` to `node-config.json` for the user role, and pip-installs `aiohttp`
+- [`scripts/axl-start.sh`](scripts/axl-start.sh) already background-starts `mcp-router.py` + `aws.ts` on the user role and monitors them in the polling loop
+
+What's missing for the AXL integration to work:
+1. The aforementioned `@aws-sdk/client-ec2` + `ssh2` deps so `aws.ts` compiles
+2. Replace the hardcoded `aws.ts` tools with calls into the **standalone demo scripts** above (so the AXL-routed flow is the same browser walk + SDK launch + SSH install we already have working locally) — i.e. pivot `aws.ts`'s tool implementations from "do the work directly" to "spawn `tsx scripts/demo-before.ts` etc. as child processes"
+3. Confirm the AXL-side wiring on a real 3-Mac mesh: agent-b runs `mcp-call user aws walk_through` → user's Mac shows approval prompt + runs the demo
+
+### Verified MCP request shape (from gensyn-ai/axl/integrations/mcp_routing/mcp_router.py)
 
 Sender:
 ```
 POST http://127.0.0.1:9002/mcp/<peer-pubkey>/aws
-{ "jsonrpc":"2.0", "id":1, "method":"tools/call", "params":{"name":"launch_instance","arguments":{"name":"…"}} }
+{ "jsonrpc":"2.0", "id":1, "method":"tools/call", "params":{"name":"...","arguments":{...}} }
 ```
 
-AXL forwards to `router_addr:router_port` (`http://127.0.0.1:9003`) as:
+AXL forwards to `router_addr:router_port` (`http://127.0.0.1:9003/route`):
 ```
-POST /route
-{ "service":"aws", "request": <jsonrpc>, "from_peer_id":"<28hex>" }
-```
-
-Router POSTs the inner `request` body to `aws.ts /mcp` with headers `X-From-Peer-Id`, `X-Service`. `aws.ts` resolves peer→role via `matchesPeer()` (the same X-From-Peer-Id truncation handler from Phase 1), prompts approval, runs the tool, returns:
-```
-{ "jsonrpc":"2.0", "id":1, "result":{ "content":[{"type":"text","text":"<JSON>"}] } }
+{ "service":"aws", "request": <jsonrpc-above>, "from_peer_id":"<28hex>" }
 ```
 
-Router wraps as `{response: <jsonrpc>, error: null}` and propagates back through AXL to the sender.
-
-## File map
-
+Router POSTs the inner `request` body to the registered service's `/mcp` endpoint with headers `X-From-Peer-Id` (use `matchesPeer()` from `axl/axl.ts` — header is truncated to ~28 hex), `X-Service`. Service prompts approval, runs the tool, returns:
 ```
-axl/
-  mcp-router.py                          # vendored verbatim from gensyn-ai/axl/integrations/mcp_routing/
-  mcp-servers/
-    permission.ts                        # serialised terminal y/n approval gate
-    aws.ts                               # Express MCP service on :9100; 4 tools, self-registers with router
-    aws-helpers/
-      urls.ts                            # hardcoded AWS console URLs (deep-links)
-      browser.ts                         # `open <url>` wrapper (macOS)
-      ec2.ts                             # @aws-sdk/client-ec2 wrapper (AMI/sg/keypair hardcoded)
-      ssh.ts                             # ssh2 wrapper with retry-on-boot
-scripts/
-  mcp-call.ts                            # sender CLI: POST /mcp/<pk>/<svc> with JSON-RPC envelope
-  mcp-demo.sh                            # convenience wrappers for the 4 demo steps
+{ "jsonrpc":"2.0", "id":1, "result":{ "content":[{"type":"text","text":"<json-stringified result>"}] } }
 ```
 
-## npm scripts
-
-| command | purpose |
-|---------|---------|
-| `npm run mcp:call -- <role> <svc> <tool> '<json>'` | low-level: any tool on any role |
-| `npm run mcp:demo:open` | `aws.open_console` on user |
-| `npm run mcp:demo:launch` | `aws.launch_instance` on user (override name with `INSTANCE_NAME=`) |
-| `INSTANCE_ID=i-… npm run mcp:demo:show` | `aws.show_in_console` on user |
-| `INSTANCE_ID=i-… INSTANCE_IP=x.x.x.x npm run mcp:demo:install` | `aws.install_nanoclaw` on user |
-
-## Setup additions (user role only)
-
-`scripts/setup-axl.sh` for `MACHINE_ROLE=user` adds `"router_addr": "http://127.0.0.1", "router_port": 9003` to `axl/node-config.json` and `pip3 install --user aiohttp` (mcp_router.py's only dep).
-
-`scripts/axl-start.sh` for `MACHINE_ROLE=user` additionally background-starts `python3 axl/mcp-router.py --port 9003` and `tsx axl/mcp-servers/aws.ts` after the AXL node is up. Cleanup trap and polling loop monitor all 4 processes.
-
-For the live demo, the user pre-creates an AWS access key (in `~/.aws/credentials`) and an EC2 keypair `nanoclaw-key` (saved as `axl/nanoclaw-key.pem`, chmod 600). They log into the AWS console in their default browser before stage so cookies persist when `open_console` runs.
-
-## Mock mode
-
-`MCP_AWS_MODE=mock` env var on the user's Mac → handlers skip browser + AWS + SSH and return fake `{instance_id, public_ip}` data after a 2s sleep. Same routing path, no AWS dependency. Useful for testing transport without burning real EC2 minutes.
-
-`MCP_AUTO_APPROVE=1` env var bypasses the y/n prompt (for headless testing only — it defeats the whole point of MCP-as-execution-moat for live demos).
-
-## Phase 2a gotchas
-
-- **`matchesPeer` already handled the X-From-Peer-Id truncation in Phase 1** — `aws.ts` reuses it from `axl/axl.ts` to label the inbound caller as `agent-b` / `agent-c` in the approval prompt. Don't string-equality compare against the full pubkey.
-- **mcp-router.py needs aiohttp.** `setup-axl.sh` installs it via `pip3 install --user`. If your Mac's `python3` is from Homebrew Python, the install lands in `~/Library/Python/3.x/lib/...` — `python3 axl/mcp-router.py` finds it automatically.
-- **Service registration is at runtime.** `aws.ts` calls `POST /register` on the router on boot; if the router restarts, the service auto-reregisters (router calls go through, error response surfaces in agent's `mcp:call` log).
-- **Each tool invocation is independent and serialised.** The permission gate uses a promise chain so two concurrent MCP calls don't race on stdin. For demo, that's fine; for production, swap to a UI-based queue.
-- **Phase 1 still works in parallel.** A2A `/a2a/<peer>` and AXL `/send` are unchanged. `axl:send` continues to CC the user; `mcp:call` is additive, not replacing.
+Router wraps as `{response: <jsonrpc>, error: null}` and the response propagates back through AXL to the sender.
 
 ---
 
