@@ -34,8 +34,9 @@ The page `/ens-test` exposes both via a "Signer" radio. They share the records f
 
 - Any connected wallet calls `register(label, records)` on the registrar.
 - The contract `setSubnodeRecord(parent, label, address(this), resolver, 0, 0, parentExpiry)`, then 6× `setText`, then `safeTransferFrom(this, msg.sender, …)`. **One signature, one tx, caller pays gas, caller becomes owner.**
-- Hook: [`lib/ens/useRegisterSpecialist.ts`](lib/ens/useRegisterSpecialist.ts) — `useWriteContract` + `useWaitForTransactionReceipt`. Step machine: `idle → registering → confirming → success | error`.
-- Status hook: [`lib/ens/useParentStatus.ts`](lib/ens/useParentStatus.ts) — reads `isWrapped`, `ownerOf`, and `isApprovedForAll(parentOwner, SPECIALIST_REGISTRAR_ADDRESS)`. `canRegister` is true iff parent is wrapped AND registrar is approved.
+- Hooks live in [`lib/ens/SpecialistRegistrar.ts`](lib/ens/SpecialistRegistrar.ts):
+  - `useRegisterSpecialist` — `useWriteContract` + `useWaitForTransactionReceipt`. Step machine: `idle → registering → confirming → success | error`.
+  - `useParentStatus` — reads `isWrapped`, `ownerOf`, and `isApprovedForAll(parentOwner, SPECIALIST_REGISTRAR_ADDRESS)`. `canRegister` is true iff parent is wrapped AND registrar is approved.
 
 ### B. Server private-key flow (legacy, still wired)
 
@@ -65,8 +66,7 @@ lib/
     SpecialistRegistrar.ts                   # register(label, Records), parentNode, event
   ens-registry.ts                            # server reads + private-key writes + shared encoders
   ens/
-    useParentStatus.ts                       # wagmi: parent + registrar approval
-    useRegisterSpecialist.ts                 # wagmi: contract.register() with step machine
+    SpecialistRegistrar.ts                   # wagmi hooks: useParentStatus + useRegisterSpecialist
   providers.tsx                              # RainbowKit + wagmi + react-query wrapper
 components/
   Navbar.tsx                                 # ConnectButton.Custom with useEnsName/useEnsAvatar
@@ -160,7 +160,7 @@ The parent owner (`0x7dEC1014…`) has called `NameWrapper.setApprovalForAll(Tas
 | file                                                       | role                                                                                                                            |
 |------------------------------------------------------------|---------------------------------------------------------------------------------------------------------------------------------|
 | [`pages/tasks.tsx`](pages/tasks.tsx)                       | post-task form + paginated task cards (status, budget, deadline, slots, signed-on list) + per-role buttons + withdraw card     |
-| [`lib/tasks/useTaskMarket.ts`](lib/tasks/useTaskMarket.ts) | `useTasks` (batched `useReadContracts`), `usePostTask`, `useSignOnTask`, `useCompleteTask`, `useCancelTask`, `useWithdraw`, `useWithdrawable` |
+| [`lib/ens/TaskMarket.ts`](lib/ens/TaskMarket.ts)           | `useTasks` (batched `useReadContracts`), `usePostTask`, `useSignOnTask`, `useCompleteTask`, `useCancelTask`, `useWithdraw`, `useWithdrawable` |
 | [`lib/abis/TaskMarket.ts`](lib/abis/TaskMarket.ts)         | ABI + `TASK_STATUS` enum (`Open=0, Completed=1, Cancelled=2`)                                                                   |
 
 Each task card links its ENS name to `/api/ens/read-specialist?name=task-{id}.righthand.eth` so the resolver records can be inspected immediately.
@@ -172,12 +172,14 @@ contracts/
   contracts/TaskMarket.sol               # escrow + per-task subname + status updates
   ignition/modules/TaskMarket.ts         # Ignition deploy module (parentNode param)
 lib/
-  abis/TaskMarket.ts
-  tasks/
-    useTaskMarket.ts
+  abis/TaskMarket.ts                     # ABI + TASK_STATUS enum
+  ens/
+    TaskMarket.ts                        # wagmi hooks: useTasks + usePostTask + useSignOnTask + useCompleteTask + useCancelTask + useWithdraw + useWithdrawable
 pages/
   tasks.tsx                              # /tasks UI
 ```
+
+**Convention:** every smart contract has one ABI file (`lib/abis/<Contract>.ts`) and one wagmi-hooks file (`lib/ens/<Contract>.ts`). Co-locate all hooks for a contract in its file; only split a hook into its own file once it grows large enough to justify it (none currently do).
 
 `TASK_MARKET_ADDRESS` is hardcoded in `lib/networkConfig.ts` (deployment artifact, same convention as `SPECIALIST_REGISTRAR_ADDRESS`).
 
