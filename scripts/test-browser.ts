@@ -34,10 +34,13 @@ const DEFAULT_URLS = [
   "https://signin.aws.amazon.com/signin?client_id=arn%3Aaws%3Asignin%3A%3A%3Aconsole%2Fcanvas&redirect_uri=https%3A%2F%2Fconsole.aws.amazon.com%2Fconsole%2Fhome%3Fca-oauth-flow-id%3D29dc%26hashArgs%3D%2523%26isauthcode%3Dtrue%26oauthStart%3D1777701383684%26state%3DhashArgsFromTB_ap-southeast-2_2b6ff061c8208fa1&page=resolve&code_challenge=zp9yZvuW7Y8NKnoaaROzZ8ew5F8PcdtJgPucPpwpK8I&code_challenge_method=SHA-256&backwards_compatible=true",
   // 5. Console home (after sign-in)
   "https://us-east-1.console.aws.amazon.com/console/home?region=us-east-1#",
-  // 6. EC2 dashboard — last browser step. After this the demo transitions to
-  //    SDK calls (RunInstances + ssh2) — no more button clicking. See
-  //    `npm run test:aws launch` for the actual EC2 deploy via API.
+  // 6. EC2 dashboard
   "https://us-east-1.console.aws.amazon.com/ec2/home?region=us-east-1",
+  // 7. Launch wizard — last browser step. After this the demo transitions to
+  //    SDK calls (RunInstances + ssh2) — instead of clicking through the
+  //    wizard's name/AMI/type/keypair/sg pages, the AI calls RunInstances
+  //    directly with all params hardcoded. See `npm run test:aws launch`.
+  "https://us-east-1.console.aws.amazon.com/ec2/home?region=us-east-1#LaunchInstances:",
 ];
 
 const cyan = "\x1b[36m";
