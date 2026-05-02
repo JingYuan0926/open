@@ -23,7 +23,6 @@ const SPECIALISTS = [
 
 const STEPS = [
   "Open the AWS console sign-in page in your browser",
-  "Wait for you to sign in to AWS (we pause here)",
   "Auto-walk through the EC2 console pages (visual narrative)",
   "Pop a Terminal.app window that runs the AWS CLI install",
   "Provision a t3.micro EC2 instance in us-east-1",
@@ -34,17 +33,20 @@ type Phase =
   | "introducing" // animating specialists signing on
   | "ready" // both signed on, waiting for user to confirm
   | "confirm" // confirm modal open
-  | "login" // login modal open
-  | "running" // demo:final spawned, running
+  | "running" // demo:final spawned, polling for completion
   | "done"; // celebration modal open
+
+const POLL_INTERVAL_MS = 5_000;
+const TIMEOUT_MS = 6 * 60 * 1000; // 6 minutes — fallback if marker never appears
 
 export function DemoFlow({ taskLabel }: { taskLabel: string }) {
   const [phase, setPhase] = React.useState<Phase>("introducing");
   const [signedOn, setSignedOn] = React.useState<typeof SPECIALISTS>([]);
   const [error, setError] = React.useState<string | null>(null);
   const [busy, setBusy] = React.useState(false);
+  const [elapsed, setElapsed] = React.useState(0);
 
-  // Animate specialists discovering + signing on after the task posts.
+  // Animate specialists signing on.
   React.useEffect(() => {
     const timers: ReturnType<typeof setTimeout>[] = [];
     timers.push(setTimeout(() => setSignedOn([SPECIALISTS[0]]), 700));
@@ -53,28 +55,49 @@ export function DemoFlow({ taskLabel }: { taskLabel: string }) {
     return () => timers.forEach(clearTimeout);
   }, []);
 
-  const callOpenLogin = async () => {
-    setError(null);
-    setBusy(true);
-    try {
-      const r = await fetch("/api/demo/login", { method: "POST" });
-      if (!r.ok) {
-        const body = await r.json().catch(() => ({}));
-        throw new Error(body.error ?? `HTTP ${r.status}`);
-      }
-      setPhase("login");
-    } catch (e) {
-      setError(e instanceof Error ? e.message : "Failed to open AWS sign-in");
-    } finally {
-      setBusy(false);
-    }
-  };
+  // Once running, poll /api/demo/status until done (or timeout).
+  React.useEffect(() => {
+    if (phase !== "running") return;
+    const startedAt = Date.now();
+    let cancelled = false;
 
-  const callRunFinal = async () => {
+    const tick = () => setElapsed(Math.floor((Date.now() - startedAt) / 1000));
+    const tickInterval = setInterval(tick, 1000);
+
+    const poll = async () => {
+      while (!cancelled) {
+        if (Date.now() - startedAt >= TIMEOUT_MS) {
+          if (!cancelled) setPhase("done");
+          return;
+        }
+        try {
+          const r = await fetch("/api/demo/status");
+          if (r.ok) {
+            const body = await r.json();
+            if (body.done) {
+              if (!cancelled) setPhase("done");
+              return;
+            }
+          }
+        } catch {
+          // ignore — retry next tick
+        }
+        await new Promise((res) => setTimeout(res, POLL_INTERVAL_MS));
+      }
+    };
+    poll();
+
+    return () => {
+      cancelled = true;
+      clearInterval(tickInterval);
+    };
+  }, [phase]);
+
+  const start = async () => {
     setError(null);
     setBusy(true);
     try {
-      const r = await fetch("/api/demo/run", { method: "POST" });
+      const r = await fetch("/api/demo/start", { method: "POST" });
       if (!r.ok) {
         const body = await r.json().catch(() => ({}));
         throw new Error(body.error ?? `HTTP ${r.status}`);
@@ -136,23 +159,30 @@ export function DemoFlow({ taskLabel }: { taskLabel: string }) {
               Both specialists matched. Ready to begin execution.
             </span>
             <Button variant="primary" icon="play" onClick={() => setPhase("confirm")}>
-              Confirm & run
+              Start demo
             </Button>
           </div>
         )}
-        {phase !== "ready" && phase !== "introducing" && (
+        {phase === "running" && (
+          <div className="p-3 border-t border-border bg-surface-2 grid gap-2">
+            <div className="flex items-center gap-2 text-[12.5px] text-ink-2">
+              <span className="w-1.5 h-1.5 rounded-full bg-amber-500 pulse-dot" />
+              <span className="flex-1">
+                Demo running — sign in to AWS in Chrome, then watch the popup terminal.
+              </span>
+              <span className="text-[11px] font-mono text-ink-3 tabular-nums">
+                {Math.floor(elapsed / 60)}:{String(elapsed % 60).padStart(2, "0")}
+              </span>
+            </div>
+            <div className="text-[11.5px] text-ink-3">
+              No clicks needed — we&rsquo;ll let you know when the EC2 instance is provisioned and OpenClaw is installed.
+            </div>
+          </div>
+        )}
+        {phase === "done" && (
           <div className="p-3 border-t border-border bg-surface-2 flex items-center gap-2">
-            <span
-              className={`w-1.5 h-1.5 rounded-full ${
-                phase === "done" ? "bg-emerald-500" : "bg-amber-500 pulse-dot"
-              }`}
-            />
-            <span className="text-[12.5px] text-ink-2">
-              {phase === "confirm" && "Reviewing steps before execution…"}
-              {phase === "login" && "Waiting for you to sign in to AWS…"}
-              {phase === "running" && "Demo running — see browser & Terminal.app popup…"}
-              {phase === "done" && "Demo complete."}
-            </span>
+            <Icon name="check" size={14} className="text-emerald-500" />
+            <span className="text-[12.5px] text-ink-2">Demo complete.</span>
           </div>
         )}
       </div>
@@ -164,7 +194,9 @@ export function DemoFlow({ taskLabel }: { taskLabel: string }) {
             <h3 className="text-[15px] font-semibold">Confirm execution</h3>
           </div>
           <p className="text-[13px] text-ink-2">
-            Both specialists will run the following on your machine and in your AWS account:
+            Both specialists will run the following on your machine and in your AWS account. Sign
+            in to AWS in your browser when the page opens — no other clicks needed; we&rsquo;ll
+            tell you when it&rsquo;s done.
           </p>
           <ol className="grid gap-1.5">
             {STEPS.map((s, i) => (
@@ -185,82 +217,9 @@ export function DemoFlow({ taskLabel }: { taskLabel: string }) {
               {error}
             </div>
           )}
-          <div className="flex gap-2 pt-1">
-            <Button variant="secondary" onClick={() => setPhase("ready")} disabled={busy}>
-              Cancel
-            </Button>
-            <Button variant="primary" icon="check" onClick={callOpenLogin} disabled={busy}>
-              {busy ? "Opening AWS…" : "Open AWS sign-in"}
-            </Button>
-          </div>
-        </div>
-      </Modal>
-
-      <Modal open={phase === "login"}>
-        <div className="grid gap-3.5">
-          <div className="flex items-center gap-2">
-            <Icon name="key" size={16} />
-            <h3 className="text-[15px] font-semibold">Sign in to AWS</h3>
-          </div>
-          <p className="text-[13px] text-ink-2">
-            A Chrome tab opened to{" "}
-            <span className="font-mono text-[12.5px]">signin.aws.amazon.com</span>. Sign in with
-            your AWS account, then click below to continue.
-          </p>
-          <div className="text-[11.5px] text-ink-3 bg-surface-2 border border-border px-3 py-2 rounded">
-            Tip: the IAM user needs <span className="font-mono">AmazonEC2FullAccess</span> +{" "}
-            <span className="font-mono">AmazonSSMReadOnlyAccess</span> for the launch step to
-            succeed.
-          </div>
-          {error && (
-            <div className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-[12px] text-red-800">
-              {error}
-            </div>
-          )}
-          <div className="flex gap-2 pt-1">
-            <Button variant="secondary" onClick={() => setPhase("ready")} disabled={busy}>
-              Cancel
-            </Button>
-            <Button variant="primary" icon="arrow-up-right" onClick={callRunFinal} disabled={busy}>
-              {busy ? "Starting demo…" : "I'm signed in — continue"}
-            </Button>
-          </div>
-        </div>
-      </Modal>
-
-      <Modal open={phase === "running"}>
-        <div className="grid gap-3.5">
-          <div className="flex items-center gap-2">
-            <span className="w-2 h-2 rounded-full bg-amber-500 pulse-dot" />
-            <h3 className="text-[15px] font-semibold">Demo running</h3>
-          </div>
-          <p className="text-[13px] text-ink-2">
-            Chrome auto-walks the EC2 console pages, then Terminal.app pops with the AWS CLI
-            install. Provisioning + SSH install takes ~3 minutes total.
-          </p>
-          <ul className="grid gap-1.5 text-[13px] text-ink-2">
-            <li className="flex gap-2">
-              <Icon name="check" size={14} className="text-emerald-500 mt-0.5 shrink-0" />
-              <span>EC2 console pages opening in Chrome</span>
-            </li>
-            <li className="flex gap-2">
-              <Icon name="check" size={14} className="text-emerald-500 mt-0.5 shrink-0" />
-              <span>Terminal.app spawned with AWS CLI</span>
-            </li>
-            <li className="flex gap-2 text-ink-3">
-              <span className="w-3.5 h-3.5 rounded-full border border-dashed border-border-strong mt-0.5 shrink-0" />
-              <span>
-                Watch the popup terminal — when it shows{" "}
-                <span className="font-mono">━━ handoff to user ━━</span>, click below
-              </span>
-            </li>
-          </ul>
-          <div className="flex gap-2 pt-1">
-            <Button variant="secondary" onClick={() => setPhase("ready")}>
-              Cancel
-            </Button>
-            <Button variant="primary" icon="check" onClick={() => setPhase("done")}>
-              I see it&rsquo;s done
+          <div className="flex justify-end pt-1">
+            <Button variant="primary" icon="play" onClick={start} disabled={busy}>
+              {busy ? "Starting…" : "Start"}
             </Button>
           </div>
         </div>
@@ -289,7 +248,7 @@ export function DemoFlow({ taskLabel }: { taskLabel: string }) {
             Don&rsquo;t forget to terminate the instance when done:{" "}
             <span className="font-mono">aws ec2 terminate-instances --instance-ids i-...</span>
           </div>
-          <div className="flex gap-2 pt-1">
+          <div className="flex justify-end pt-1">
             <Button variant="primary" onClick={() => setPhase("done")}>
               Got it
             </Button>
