@@ -1,19 +1,47 @@
-// scripts/test-browser.ts — verify cross-platform browser opening on this machine.
+// scripts/test-browser.ts — sequence of URL navigations in Chrome.
 //
-// Opens 2 AWS URLs in sequence with a 4s delay. Same code path as the MCP
-// `open_console` and `show_in_console` tools — if this works in your terminal,
-// the demo's browser-open steps will work too.
+// Same code path as the MCP `open_console` and `show_in_console` tools.
+// If this works on your machine, the demo's browser-open steps will work too.
 //
-// Usage:
+// Default: walks the AWS account-creation flow (free-tier → signup) with a
+// 5s pause between each page. Pass any number of URLs on the CLI to override.
+//
+// Run:
 //   npm run test:browser
-//   npm run test:browser -- <url1> <url2>     (custom URLs)
+//   npm run test:browser -- <url1> <url2> [url3] [url4]…
+//   DELAY_MS=8000 npm run test:browser    (slower walk)
+//   BROWSER=msedge npm run test:browser   (Edge instead of Chrome)
 
 import { detectOpener, openUrl } from "../axl/mcp-servers/aws-helpers/browser";
 
-// Defaults: AWS free-tier landing → signup page.
-// You can override on the CLI: npm run test:browser -- <url1> <url2>
-const DEFAULT_URL_1 = "https://aws.amazon.com/free/?trk=06dd4e64-3ddf-405e-bec9-d2414185926c&sc_channel=ps&ef_id=CjwKCAjwntHPBhAaEiwA_Xp6RnY7G9dZSmhU0VN020DtbAGdylUEVlHhJo1aVZtg-qgsAyMYQNVwjRoCB7sQAvD_BwE:G:s&s_kwcid=AL!4422!3!798628412789!e!!g!!aws!23606217014!196761071947&gad_campaignid=23606217014&gbraid=0AAAAADjHtp-Y4t6OtBT9be4A-mk1PZ4NA&gclid=CjwKCAjwntHPBhAaEiwA_Xp6RnY7G9dZSmhU0VN020DtbAGdylUEVlHhJo1aVZtg-qgsAyMYQNVwjRoCB7sQAvD_BwE";
-const DEFAULT_URL_2 = "https://signin.aws.amazon.com/signup?request_type=register&trk=06dd4e64-3ddf-405e-bec9-d2414185926c&sc_channel=ps";
+// Default flow: AWS free-tier landing → signup page → sign-in page.
+// AI handles navigation; user types credentials themselves at the sign-in
+// step (auth is the user's job, not the AI's — MCP execution moat).
+//
+// Add more URLs to extend the narrative (e.g. console home → IAM → EC2).
+//
+// Note on the sign-in URL: the long OAuth one with code_challenge/state is
+// session-bound and expires. For repeat demos, swap in the generic:
+//   https://signin.aws.amazon.com/console
+const DEFAULT_URLS = [
+  // 1. AWS free-tier landing
+  "https://aws.amazon.com/free/?trk=06dd4e64-3ddf-405e-bec9-d2414185926c&sc_channel=ps&ef_id=CjwKCAjwntHPBhAaEiwA_Xp6RnY7G9dZSmhU0VN020DtbAGdylUEVlHhJo1aVZtg-qgsAyMYQNVwjRoCB7sQAvD_BwE:G:s&s_kwcid=AL!4422!3!798628412789!e!!g!!aws!23606217014!196761071947&gad_campaignid=23606217014&gbraid=0AAAAADjHtp-Y4t6OtBT9be4A-mk1PZ4NA&gclid=CjwKCAjwntHPBhAaEiwA_Xp6RnY7G9dZSmhU0VN020DtbAGdylUEVlHhJo1aVZtg-qgsAyMYQNVwjRoCB7sQAvD_BwE",
+  // 2. Signup form
+  "https://signin.aws.amazon.com/signup?request_type=register&trk=06dd4e64-3ddf-405e-bec9-d2414185926c&sc_channel=ps",
+  // 3. Sign-in OAuth landing
+  "https://ap-southeast-2.signin.aws.amazon.com/oauth?client_id=arn%3Aaws%3Asignin%3A%3A%3Aconsole%2Fcanvas&code_challenge=zp9yZvuW7Y8NKnoaaROzZ8ew5F8PcdtJgPucPpwpK8I&code_challenge_method=SHA-256&response_type=code&redirect_uri=https%3A%2F%2Fconsole.aws.amazon.com%2Fconsole%2Fhome%3Fca-oauth-flow-id%3D29dc%26hashArgs%3D%2523%26isauthcode%3Dtrue%26oauthStart%3D1777701383684%26state%3DhashArgsFromTB_ap-southeast-2_2b6ff061c8208fa1",
+  // 4. Sign-in root email (user types here)
+  "https://signin.aws.amazon.com/signin?client_id=arn%3Aaws%3Asignin%3A%3A%3Aconsole%2Fcanvas&redirect_uri=https%3A%2F%2Fconsole.aws.amazon.com%2Fconsole%2Fhome%3Fca-oauth-flow-id%3D29dc%26hashArgs%3D%2523%26isauthcode%3Dtrue%26oauthStart%3D1777701383684%26state%3DhashArgsFromTB_ap-southeast-2_2b6ff061c8208fa1&page=resolve&code_challenge=zp9yZvuW7Y8NKnoaaROzZ8ew5F8PcdtJgPucPpwpK8I&code_challenge_method=SHA-256&backwards_compatible=true",
+  // 5. Console home (after sign-in)
+  "https://us-east-1.console.aws.amazon.com/console/home?region=us-east-1#",
+  // 6. EC2 dashboard
+  "https://us-east-1.console.aws.amazon.com/ec2/home?region=us-east-1",
+  // 7. Launch wizard — last browser step. After this the demo transitions to
+  //    SDK calls (RunInstances + ssh2) — instead of clicking through the
+  //    wizard's name/AMI/type/keypair/sg pages, the AI calls RunInstances
+  //    directly with all params hardcoded. See `npm run test:aws launch`.
+  "https://us-east-1.console.aws.amazon.com/ec2/home?region=us-east-1#LaunchInstances:",
+];
 
 const cyan = "\x1b[36m";
 const yellow = "\x1b[1;33m";
@@ -21,33 +49,34 @@ const green = "\x1b[32m";
 const dim = "\x1b[2m";
 const reset = "\x1b[0m";
 
-const url1 = process.argv[2] || DEFAULT_URL_1;
-const url2 = process.argv[3] || DEFAULT_URL_2;
+const cliUrls = process.argv.slice(2);
+const urls = cliUrls.length > 0 ? cliUrls : DEFAULT_URLS;
+const delayMs = parseInt(process.env.DELAY_MS ?? "5000", 10);
 
 (async () => {
   const opener = detectOpener();
   console.log(`${cyan}━━ test-browser ━━${reset}`);
-  console.log(`${dim}detected opener: ${opener.cmd} ${opener.args("<url>").join(" ")}${reset}`);
+  console.log(`${dim}opener: ${opener.cmd} ${opener.args("<url>").filter(Boolean).join(" ")}${reset}`);
+  console.log(`${dim}walking ${urls.length} URL${urls.length === 1 ? "" : "s"} with ${delayMs}ms between each${reset}`);
   console.log("");
 
-  console.log(`${yellow}step 1${reset}: opening AWS free-tier`);
-  console.log(`${dim}  ${url1.slice(0, 80)}${url1.length > 80 ? "…" : ""}${reset}`);
-  await openUrl(url1);
-  console.log(`${green}  ✓ opened${reset}`);
-  console.log("");
+  for (let i = 0; i < urls.length; i++) {
+    const url = urls[i];
+    const stepNum = i + 1;
+    console.log(`${yellow}step ${stepNum}/${urls.length}${reset}: opening`);
+    console.log(`${dim}  ${url.slice(0, 90)}${url.length > 90 ? "…" : ""}${reset}`);
+    await openUrl(url);
+    console.log(`${green}  ✓ opened${reset}`);
 
-  console.log(`${dim}waiting 4s before next URL…${reset}`);
-  await new Promise(r => setTimeout(r, 4000));
-  console.log("");
+    if (i < urls.length - 1) {
+      console.log(`${dim}  waiting ${delayMs}ms before next step…${reset}`);
+      await new Promise(r => setTimeout(r, delayMs));
+      console.log("");
+    }
+  }
 
-  console.log(`${yellow}step 2${reset}: opening AWS signup`);
-  console.log(`${dim}  ${url2.slice(0, 80)}${url2.length > 80 ? "…" : ""}${reset}`);
-  await openUrl(url2);
-  console.log(`${green}  ✓ opened${reset}`);
   console.log("");
-
-  console.log(`${green}━━ both URLs opened ━━${reset}`);
-  console.log(`${dim}If you saw both pages appear in your browser, the URL-navigation flow works on this machine.${reset}`);
+  console.log(`${green}━━ done — ${urls.length} pages opened in sequence ━━${reset}`);
 })().catch(err => {
   console.error(`\nerror: ${err instanceof Error ? err.message : String(err)}`);
   process.exit(1);
