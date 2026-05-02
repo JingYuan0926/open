@@ -64,11 +64,11 @@ const TOTAL = 7;
   if (MOCK) console.log(`${dim}MOCK=1 — fake SDK + SSH (browser steps still real)${reset}`);
   if (KEEP) console.log(`${dim}KEEP=1 — instance will NOT be terminated at end${reset}`);
 
-  // ─── 1. Browser: console home
+  // ─── 1. Browser: console home (extra 2s — first page often slowest to load)
   step(1, TOTAL, "browser → console home");
   await openUrl(URLS.consoleHome);
   ok("opened");
-  await sleep(BROWSER_DELAY);
+  await sleep(BROWSER_DELAY + 2000);
 
   // ─── 2. Browser: EC2 dashboard
   step(2, TOTAL, "browser → EC2 dashboard");
