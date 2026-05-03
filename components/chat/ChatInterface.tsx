@@ -19,7 +19,9 @@ const MODE_TO_MAX: Record<ModeId, number> = {
   deep: 5,
 };
 
-const THINKING_MS = 5000;
+const THINKING_STEP_MS = 2000;
+const THINKING_STEPS = 4;
+const THINKING_MS = THINKING_STEP_MS * THINKING_STEPS;
 
 export function ChatInterface() {
   const [input, setInput] = React.useState("");
@@ -106,7 +108,7 @@ export function ChatInterface() {
                 if (it.kind === "thinking")
                   return (
                     <AssistantWrapper key={it.id} modeLabel={modeLabel}>
-                      <ThinkingIndicator />
+                      <ThinkingIndicator prompt={it.prompt} />
                     </AssistantWrapper>
                   );
                 return (
