@@ -114,10 +114,10 @@ function OrchestratorDiagram() {
 
         <g stroke="#CBD5E1" strokeWidth="0.3" strokeDasharray="0.7 0.7" fill="none">
           <line x1="50" y1="50" x2="50" y2="16" />
-          <line x1="50" y1="50" x2="20" y2="38" />
-          <line x1="50" y1="50" x2="80" y2="38" />
-          <line x1="50" y1="50" x2="20" y2="62" />
-          <line x1="50" y1="50" x2="80" y2="62" />
+          <line x1="50" y1="50" x2="18" y2="38" />
+          <line x1="50" y1="50" x2="82" y2="38" />
+          <line x1="50" y1="50" x2="18" y2="62" />
+          <line x1="50" y1="50" x2="82" y2="62" />
           <line x1="50" y1="50" x2="50" y2="84" />
           <line x1="50" y1="50" x2="113" y2="50" />
         </g>
@@ -127,23 +127,23 @@ function OrchestratorDiagram() {
             <animate attributeName="cy" values="16;50;50" keyTimes="0;0.5;1" dur="3s" repeatCount="indefinite" />
             <animate attributeName="opacity" values="1;1;0;0" keyTimes="0;0.5;0.501;1" dur="3s" repeatCount="indefinite" />
           </circle>
-          <circle r="0.9" cx="20" cy="38">
-            <animate attributeName="cx" values="20;50;50" keyTimes="0;0.5;1" dur="3s" repeatCount="indefinite" />
+          <circle r="0.9" cx="18" cy="38">
+            <animate attributeName="cx" values="18;50;50" keyTimes="0;0.5;1" dur="3s" repeatCount="indefinite" />
             <animate attributeName="cy" values="38;50;50" keyTimes="0;0.5;1" dur="3s" repeatCount="indefinite" />
             <animate attributeName="opacity" values="1;1;0;0" keyTimes="0;0.5;0.501;1" dur="3s" repeatCount="indefinite" />
           </circle>
-          <circle r="0.9" cx="80" cy="38">
-            <animate attributeName="cx" values="80;50;50" keyTimes="0;0.5;1" dur="3s" repeatCount="indefinite" />
+          <circle r="0.9" cx="82" cy="38">
+            <animate attributeName="cx" values="82;50;50" keyTimes="0;0.5;1" dur="3s" repeatCount="indefinite" />
             <animate attributeName="cy" values="38;50;50" keyTimes="0;0.5;1" dur="3s" repeatCount="indefinite" />
             <animate attributeName="opacity" values="1;1;0;0" keyTimes="0;0.5;0.501;1" dur="3s" repeatCount="indefinite" />
           </circle>
-          <circle r="0.9" cx="20" cy="62">
-            <animate attributeName="cx" values="20;50;50" keyTimes="0;0.5;1" dur="3s" repeatCount="indefinite" />
+          <circle r="0.9" cx="18" cy="62">
+            <animate attributeName="cx" values="18;50;50" keyTimes="0;0.5;1" dur="3s" repeatCount="indefinite" />
             <animate attributeName="cy" values="62;50;50" keyTimes="0;0.5;1" dur="3s" repeatCount="indefinite" />
             <animate attributeName="opacity" values="1;1;0;0" keyTimes="0;0.5;0.501;1" dur="3s" repeatCount="indefinite" />
           </circle>
-          <circle r="0.9" cx="80" cy="62">
-            <animate attributeName="cx" values="80;50;50" keyTimes="0;0.5;1" dur="3s" repeatCount="indefinite" />
+          <circle r="0.9" cx="82" cy="62">
+            <animate attributeName="cx" values="82;50;50" keyTimes="0;0.5;1" dur="3s" repeatCount="indefinite" />
             <animate attributeName="cy" values="62;50;50" keyTimes="0;0.5;1" dur="3s" repeatCount="indefinite" />
             <animate attributeName="opacity" values="1;1;0;0" keyTimes="0;0.5;0.501;1" dur="3s" repeatCount="indefinite" />
           </circle>
@@ -160,10 +160,10 @@ function OrchestratorDiagram() {
 
       <DiagCard top="50%" left="50%" emphasis icon={<HandIcon size={30} />} title="Right Hand AI" subtitle="Orchestrator" />
       <DiagCard top="16%" left="50%" icon={<SearchIcon />} title="Research AI" subtitle="Gathers information" />
-      <DiagCard top="38%" left="20%" icon={<ListIcon />} title="Planner AI" subtitle="Breaks down the task" />
-      <DiagCard top="38%" left="80%" icon={<PencilIcon />} title="Writer AI" subtitle="Creates content" />
-      <DiagCard top="62%" left="20%" icon={<BarChartIcon />} title="Analyst AI" subtitle="Analyzes data" />
-      <DiagCard top="62%" left="80%" icon={<ShieldIcon />} title="Reviewer AI" subtitle="Checks quality" />
+      <DiagCard top="38%" left="18%" icon={<ListIcon />} title="Planner AI" subtitle="Breaks down the task" />
+      <DiagCard top="38%" left="82%" icon={<PencilIcon />} title="Writer AI" subtitle="Creates content" />
+      <DiagCard top="62%" left="18%" icon={<BarChartIcon />} title="Analyst AI" subtitle="Analyzes data" />
+      <DiagCard top="62%" left="82%" icon={<ShieldIcon />} title="Reviewer AI" subtitle="Checks quality" />
       <DiagCard top="84%" left="50%" icon={<FileIcon />} title="Summarizer AI" subtitle="Summarizes the output" />
 
       <div className="absolute z-10" style={{ top: "50%", left: "115%", transform: "translate(-50%, -50%)" }}>
@@ -290,9 +290,9 @@ export default function Home() {
               </button>
             </div>
             <div className="mt-7 flex flex-wrap items-center gap-x-6 gap-y-2 text-xs text-ink-3">
-              <span className="inline-flex items-center gap-1.5"><CheckCircleIcon size={14} /> No credit card</span>
-              <span className="inline-flex items-center gap-1.5"><ZapIcon size={14} /> Free to start</span>
-              <span className="inline-flex items-center gap-1.5"><CheckCircleIcon size={14} /> Cancel anytime</span>
+              <span className="inline-flex items-center gap-1.5"><CheckCircleIcon size={14} /> No coding required</span>
+              <span className="inline-flex items-center gap-1.5"><UsersIcon size={14} /> Built for non-tech users</span>
+              <span className="inline-flex items-center gap-1.5"><ZapIcon size={14} /> Setup in minutes</span>
             </div>
           </div>
 
