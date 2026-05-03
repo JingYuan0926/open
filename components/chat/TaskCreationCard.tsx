@@ -396,7 +396,7 @@ function BoxedSlider({
             </span>
             {hint && (
               <span className="text-[11px] text-ink-3 leading-tight truncate">
-                {hint}
+                ({hint})
               </span>
             )}
           </div>
