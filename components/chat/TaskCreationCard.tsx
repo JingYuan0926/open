@@ -35,20 +35,33 @@ export function suggestSkills(prompt: string): string {
 
 type Step = "editing" | "awaiting" | "confirming" | "posted" | "error";
 
-const DEADLINE_MIN = 5;
-const DEADLINE_MAX = 120;
-const DEADLINE_STEP = 5;
 const SPECIALISTS_MIN = 1;
 const SPECIALISTS_MAX = 5;
+const SPEED_MIN = 1;
+const SPEED_MAX = 10;
 
-// Pricing: 0.001 ETH base per specialist, scaled by an urgency multiplier
-// that runs from 1.0 at the longest deadline to 2.0 at the shortest.
-const BASE_RATE_ETH = 0.001;
+// Additive pricing: each lever contributes its own line to the breakdown.
+const RATE_PER_SPECIALIST = 0.001; // USDC
+const RATE_PER_SPEED_LEVEL = 0.0008; // USDC per +1 speed beyond 1×
+const SWARM_COORDINATION_FEE = 0.0005; // USDC, only when >= 2 specialists
 
-function computeTotalEth(specialists: number, deadlineMinutes: number): number {
-  const urgency =
-    1 + (DEADLINE_MAX - deadlineMinutes) / (DEADLINE_MAX - DEADLINE_MIN);
-  return Number((specialists * BASE_RATE_ETH * urgency).toFixed(4));
+function computeBreakdown(specialists: number, speedLevel: number) {
+  const specialistsCost = specialists * RATE_PER_SPECIALIST;
+  const speedCost = (speedLevel - SPEED_MIN) * RATE_PER_SPEED_LEVEL;
+  const swarmCost = specialists >= 2 ? SWARM_COORDINATION_FEE : 0;
+  const total = Number((specialistsCost + speedCost + swarmCost).toFixed(4));
+  return { specialistsCost, speedCost, swarmCost, total };
+}
+
+// Speed level → estimated completion time. 1× ≈ 10 min, 10× ≈ 1 min.
+function estimatedSeconds(speedLevel: number): number {
+  return Math.round(600 - (speedLevel - SPEED_MIN) * 60);
+}
+
+function fmtTime(sec: number): string {
+  if (sec < 60) return `${sec} sec`;
+  const m = Math.round(sec / 60);
+  return `${m} min`;
 }
 
 function fmtEth(n: number): string {
@@ -73,11 +86,13 @@ export function TaskCreationCard({
     () => initialSkills ?? suggestSkills(initialDescription),
     [initialSkills, initialDescription],
   );
-  const [deadlineMinutes, setDeadlineMinutes] = React.useState(30);
+  const [speedLevel, setSpeedLevel] = React.useState(5);
   const [maxSpecialists, setMaxSpecialists] = React.useState(
     Math.min(SPECIALISTS_MAX, Math.max(SPECIALISTS_MIN, initialMaxSpecialists)),
   );
-  const totalCostEth = computeTotalEth(maxSpecialists, deadlineMinutes);
+  const breakdown = computeBreakdown(maxSpecialists, speedLevel);
+  const isSwarm = maxSpecialists >= 2;
+  const etaSeconds = estimatedSeconds(speedLevel);
   const [validationError, setValidationError] = React.useState<string | null>(null);
 
   const {
