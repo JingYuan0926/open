@@ -298,7 +298,24 @@ export function TaskCreationCard({
           </div>
         )}
 
-        <div className="flex items-center gap-2 pt-1">
+        <div className="flex items-center justify-end gap-2 pt-1">
+          {hash && (
+            <a
+              href={`https://sepolia.etherscan.io/tx/${hash}`}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="mr-auto text-[11.5px] font-mono text-blue-700 underline break-all"
+            >
+              {hash.slice(0, 10)}…{hash.slice(-8)}
+            </a>
+          )}
+
+          {step === "error" && (
+            <Button variant="ghost" icon="refresh" onClick={reset}>
+              Try again
+            </Button>
+          )}
+
           {!address ? (
             <ConnectButton.Custom>
               {({ openConnectModal, mounted }) => (
@@ -331,25 +348,8 @@ export function TaskCreationCard({
                 ? "Sign in wallet…"
                 : step === "confirming"
                   ? "Confirming…"
-                  : "Submit"}
+                  : "Pay via x402"}
             </Button>
-          )}
-
-          {step === "error" && (
-            <Button variant="ghost" icon="refresh" onClick={reset}>
-              Try again
-            </Button>
-          )}
-
-          {hash && (
-            <a
-              href={`https://sepolia.etherscan.io/tx/${hash}`}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="ml-auto text-[11.5px] font-mono text-blue-700 underline break-all"
-            >
-              {hash.slice(0, 10)}…{hash.slice(-8)}
-            </a>
           )}
         </div>
 
