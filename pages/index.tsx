@@ -191,18 +191,15 @@ export default function Home() {
     }
   }
 
-  function handleDownloadAxl() {
+  const AXL_CLONE_CMD = "git clone https://github.com/gensyn-ai/axl.git\ncd axl && go build ./cmd/node";
+
+  async function handleCopyAxl() {
     if (step2Done) return;
-    const content = `# AXL Setup\n\n1. npm install\n2. MACHINE_ROLE=user npm run axl:setup\n3. npm run axl:start\n\nSee axl/SETUP.md for full instructions.\n`;
-    const blob = new Blob([content], { type: "text/plain" });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = "axl-setup.txt";
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-    URL.revokeObjectURL(url);
+    try {
+      await navigator.clipboard.writeText(AXL_CLONE_CMD);
+    } catch {
+      // clipboard may be unavailable — still mark complete
+    }
     setStep2Done(true);
   }
 
@@ -388,22 +385,25 @@ export default function Home() {
 
             <div className={`rounded-2xl border p-4 mb-6 ${step2Done ? "border-border bg-surface-2" : "border-border bg-surface"}`}>
               <div className="flex items-start justify-between gap-4">
-                <div className="flex items-start gap-3">
+                <div className="flex items-start gap-3 flex-1 min-w-0">
                   <div className={`w-7 h-7 rounded-full flex items-center justify-center text-xs font-semibold flex-shrink-0 ${step2Done ? "bg-ink text-white" : "bg-surface-3 text-ink-2 border border-border"}`}>
                     {step2Done ? <CheckIcon size={14} /> : "2"}
                   </div>
-                  <div>
-                    <div className="font-semibold text-sm">Download AXL files</div>
-                    <div className="text-xs text-ink-3 mt-0.5">Download the AXL setup file.</div>
+                  <div className="flex-1 min-w-0">
+                    <div className="font-semibold text-sm">Clone AXL files</div>
+                    <div className="text-xs text-ink-3 mt-0.5">Run these commands in your terminal:</div>
                   </div>
                 </div>
                 <button
-                  onClick={handleDownloadAxl}
-                  disabled={step2Done}
-                  className={`flex-shrink-0 px-4 py-2 rounded-lg text-sm font-medium ${step2Done ? "bg-surface-3 text-ink-3 cursor-default" : "bg-accent text-accent-fg hover:opacity-90 disabled:opacity-50"}`}
+                  onClick={handleCopyAxl}
+                  className={`flex-shrink-0 px-4 py-2 rounded-lg text-sm font-medium ${step2Done ? "bg-surface-3 text-ink-3 cursor-default" : "bg-accent text-accent-fg hover:opacity-90"}`}
                 >
-                  {step2Done ? "Downloaded" : "Download"}
+                  {step2Done ? "Copied" : "Copy"}
                 </button>
+              </div>
+              <div className="mt-3 ml-10 bg-surface-3 rounded-lg px-3 py-2.5 font-mono text-2xs text-ink overflow-x-auto whitespace-pre">
+                <div><span className="text-ink-3 select-none">$ </span>git clone https://github.com/gensyn-ai/axl.git</div>
+                <div><span className="text-ink-3 select-none">$ </span>cd axl && go build ./cmd/node</div>
               </div>
             </div>
 
