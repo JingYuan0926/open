@@ -186,7 +186,6 @@ export function TaskCreationCard({
     }
   })();
 
-  const perSpecialist = budgetEth / maxSpecialists;
   const deadlineAt = new Date(Date.now() + deadlineMinutes * 60 * 1000);
   const deadlineLabel = deadlineAt.toLocaleTimeString([], {
     hour: "2-digit",
