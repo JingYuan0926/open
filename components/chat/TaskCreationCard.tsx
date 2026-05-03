@@ -2,17 +2,35 @@
 
 import * as React from "react";
 import { ConnectButton } from "@rainbow-me/rainbowkit";
-import { parseEther, parseEventLogs } from "viem";
+import { parseUnits } from "viem";
 import { useAccount, useWaitForTransactionReceipt, useWriteContract } from "wagmi";
 import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
 import { Icon } from "@/components/ui/Icon";
-import { TASK_MARKET_ABI } from "@/lib/abis/TaskMarket";
-import {
-  ENS_CHAIN_ID,
-  ENS_PARENT_DOMAIN,
-  TASK_MARKET_ADDRESS,
-} from "@/lib/networkConfig";
+import { ENS_CHAIN_ID, ENS_PARENT_DOMAIN } from "@/lib/networkConfig";
+
+// Sepolia USDC (Circle's canonical testnet contract). We sign a real
+// USDC.transfer for the task budget so the etherscan tx reads as a USDC
+// movement, not a native-ETH payment. Recipient is a known burner
+// (vitalik.eth) since this is the demo flow on /landing.
+const SEPOLIA_USDC = "0x1c7D4B196Cb0C7B01d743Fbc6116a902379C7238" as const;
+const USDC_DECIMALS = 6;
+const TASK_BUDGET_RECIPIENT =
+  "0xd8dA6BF26964aF9D7eEd9e03E53415D37aA96045" as const; // vitalik.eth
+
+// Minimal ERC-20 transfer ABI for wagmi typing.
+const USDC_TRANSFER_ABI = [
+  {
+    type: "function",
+    name: "transfer",
+    stateMutability: "nonpayable",
+    inputs: [
+      { name: "to", type: "address" },
+      { name: "value", type: "uint256" },
+    ],
+    outputs: [{ type: "bool" }],
+  },
+] as const;
 
 // Light keyword routing — picks a few skill tags from the user's prompt so
 // the right specialists in the marketplace can match. Backend-only now;
@@ -140,27 +158,18 @@ export function TaskCreationCard({
           ? "awaiting"
           : "editing";
 
-  // Parse TaskPosted from the receipt to show the resulting ENS subname.
+  // Synthesize a task label after the USDC transfer confirms. Without
+  // TaskMarket.postTask we don't have a TaskPosted event to pull from,
+  // so we generate a stable id from the tx hash so it's unique per post
+  // and reproducible across renders of the same receipt.
   const posted = React.useMemo(() => {
     if (!receipt) return null;
-    try {
-      const events = parseEventLogs({
-        abi: TASK_MARKET_ABI,
-        logs: receipt.logs,
-        eventName: "TaskPosted",
-      });
-      if (events.length > 0) {
-        const e = events[0];
-        return {
-          taskId: e.args.taskId as bigint,
-          label: e.args.label as string,
-          ensNode: e.args.ensNode as `0x${string}`,
-        };
-      }
-    } catch {
-      // fall through
-    }
-    return null;
+    const idHex = receipt.transactionHash.slice(-8); // last 4 bytes
+    const taskId = BigInt(`0x${idHex}`);
+    return {
+      taskId,
+      label: `task-${taskId.toString()}`,
+    };
   }, [receipt]);
 
   const ensName = posted ? `${posted.label}.${ENS_PARENT_DOMAIN}` : "";
@@ -181,30 +190,31 @@ export function TaskCreationCard({
       setValidationError("Description is required.");
       return;
     }
-    const ts = Math.floor(Date.now() / 1000) + etaSeconds;
-    let budgetWei: bigint;
+    let amountAtomic: bigint;
     try {
-      budgetWei = parseEther(breakdown.total.toString());
+      // breakdown.total is already a USDC-denominated decimal (e.g. 0.005).
+      amountAtomic = parseUnits(breakdown.total.toString(), USDC_DECIMALS);
     } catch {
       setValidationError("Invalid budget.");
       return;
     }
-    if (budgetWei <= BigInt(0)) {
+    if (amountAtomic <= BigInt(0)) {
       setValidationError("Budget must be greater than zero.");
       return;
     }
 
     // Fire-and-forget — settles per-call royalties to each specialist
-    // over x402 (Base Sepolia USDC) and prints the transcript to the
-    // dev server stdout alongside the Sepolia ENS task post that follows.
+    // (server-signed, prints x402 transcript to the dev terminal).
     fetch("/api/x402/pay-specialists", { method: "POST" }).catch(() => undefined);
 
+    // Wallet-signed: USDC.transfer for the task budget on Sepolia. The
+    // user sees a real USDC movement on etherscan-sepolia (no native ETH
+    // value beyond gas).
     writeContract({
-      address: TASK_MARKET_ADDRESS,
-      abi: TASK_MARKET_ABI,
-      functionName: "postTask",
-      args: [description.trim(), skillTags.trim(), BigInt(ts), maxSpecialists],
-      value: budgetWei,
+      address: SEPOLIA_USDC,
+      abi: USDC_TRANSFER_ABI,
+      functionName: "transfer",
+      args: [TASK_BUDGET_RECIPIENT, amountAtomic],
       chainId: ENS_CHAIN_ID,
     });
   };
