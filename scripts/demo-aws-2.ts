@@ -22,6 +22,7 @@ import { execSync, spawnSync } from "node:child_process";
 import { existsSync, writeFileSync, chmodSync, mkdirSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
+import { openUrl } from "../axl/mcp-servers/aws-helpers/browser";
 
 const REGION = process.env.AWS_REGION ?? "us-east-1";
 const KEY_NAME = "openclaw-demo-key";
@@ -31,6 +32,16 @@ const INSTANCE_TYPE = "t3.micro";
 const NAME_TAG = "openclaw-demo";
 const SSM_AMI_PARAM = "/aws/service/ami-amazon-linux-latest/al2023-ami-kernel-default-x86_64";
 const STATE_PATH = join(tmpdir(), "openclaw-demo-state.json");
+
+// Visible "AI walks the AWS console" tabs we open in the user's browser
+// while the CLI does the actual provisioning underneath. Audience sees
+// Home → LaunchInstances → Instances; by the time we hit Instances, the
+// new t3.micro is already running and a refresh shows it live.
+const CONSOLE_URLS = {
+  home: `https://us-east-1.console.aws.amazon.com/ec2/home?region=${REGION}#Home:`,
+  launch: `https://us-east-1.console.aws.amazon.com/ec2/home?region=${REGION}#LaunchInstances:`,
+  instances: `https://us-east-1.console.aws.amazon.com/ec2/home?region=${REGION}#Instances:`,
+} as const;
 
 const cyan = "\x1b[36m";
 const yellow = "\x1b[1;33m";
@@ -67,6 +78,10 @@ function awsSilent(args: string): void {
   step(1, "aws sts get-caller-identity");
   const arn = aws(`sts get-caller-identity --query Arn --output text`);
   ok(arn);
+
+  // visible: open EC2 dashboard so the audience sees us "land" in the console
+  info("opening EC2 dashboard in browser…");
+  await openUrl(CONSOLE_URLS.home);
 
   // 2. keypair
   step(2, `ensure keypair '${KEY_NAME}'`);
@@ -133,6 +148,10 @@ function awsSilent(args: string): void {
   );
   ok(`launched ${instanceId}`);
 
+  // visible: open Launch-Instances console page so audience sees the wizard
+  info("opening Launch Instances page in browser…");
+  await openUrl(CONSOLE_URLS.launch);
+
   // 5. wait running + grab IP
   step(5, `aws ec2 wait instance-running ${instanceId}`);
   aws(`ec2 wait instance-running --instance-ids ${instanceId} --region ${REGION}`);
@@ -140,6 +159,10 @@ function awsSilent(args: string): void {
     `ec2 describe-instances --instance-ids ${instanceId} --region ${REGION} --query 'Reservations[0].Instances[0].PublicIpAddress' --output text`,
   );
   ok(`running at ${publicIp}`);
+
+  // visible: open Instances list — by now the new t3.micro shows up after a refresh
+  info("opening EC2 Instances page in browser (refresh to see the new instance)…");
+  await openUrl(CONSOLE_URLS.instances);
 
   // 6. wait sshd
   step(6, "waiting ~30s for sshd to come up");

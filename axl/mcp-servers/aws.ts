@@ -71,12 +71,48 @@ interface ScriptResult {
   stderr_tail: string;
 }
 
+// Mutable status object shared between runDemoScript and the progress pinger.
+// runDemoScript updates `status` whenever a `━━ [N/M] …` step header or `→`
+// progress arrow shows up in the script's stdout; the pinger reads it.
+interface ScriptProgress {
+  status: string;
+  startedAt: number;
+}
+
+function newProgress(initial: string): ScriptProgress {
+  return { status: initial, startedAt: Date.now() };
+}
+
+// Pull "step N/M: title" or arrow-prefixed status lines out of a stdout chunk.
+// Returns the latest one found, or null if there isn't one.
+function extractLatestProgress(chunk: string): string | null {
+  const lines = chunk.split("\n");
+  let latest: string | null = null;
+  for (const raw of lines) {
+    const line = raw.trim();
+    // ━━ [4/6] aws ec2 run-instances t3.micro
+    const stepMatch = line.match(/━━\s*\[(\d+)\/(\d+)\]\s*(.+)/);
+    if (stepMatch) {
+      latest = `step ${stepMatch[1]}/${stepMatch[2]} — ${stepMatch[3].trim()}`;
+      continue;
+    }
+    // → Opening AWS landing page…
+    const arrowMatch = line.match(/^→\s*(.+)/);
+    if (arrowMatch) {
+      latest = arrowMatch[1].trim();
+    }
+  }
+  return latest;
+}
+
 // Spawn a demo script. stdout/stderr both stream to *this* server's terminal
 // (so the user can watch the demo progress live) AND get captured (last few
-// KB) for the MCP JSON-RPC response.
+// KB) for the MCP JSON-RPC response. If `progress` is supplied, recognised
+// status lines update it in real time.
 function runDemoScript(
   scriptRelPath: string,
   env: Record<string, string> = {},
+  progress?: ScriptProgress,
 ): Promise<ScriptResult> {
   return new Promise((res) => {
     if (!existsSync(TSX_BIN)) {
@@ -113,6 +149,10 @@ function runDemoScript(
       const s = chunk.toString();
       process.stdout.write(s);
       stdout += s;
+      if (progress) {
+        const next = extractLatestProgress(s);
+        if (next) progress.status = next;
+      }
     });
     child.stderr.on("data", (chunk: Buffer) => {
       const s = chunk.toString();
@@ -147,6 +187,92 @@ function readState(): { publicIp?: string; instanceId?: string; region?: string 
   }
 }
 
+// ────────────────────────────────────────────────────────────────────────
+//  Progress pings: while a long-running tool is in flight, fire an A2A
+//  message to every other peer every PROGRESS_MS with the *current* step
+//  parsed out of the script's stdout — e.g. "step 4/6 — aws ec2 run-
+//  instances t3.micro · 38s elapsed". The receiving peer's agent.ts logs
+//  it, so the audience watches real progress unfold across machines
+//  instead of staring at a blank terminal until the whole call returns.
+//  Pure UI plumbing — does not change the script's behaviour or success.
+// ────────────────────────────────────────────────────────────────────────
+const PROGRESS_MS = 20_000;
+
+function loadMyRole(): string {
+  try { return readFileSync(resolve(".axl/role"), "utf8").trim(); }
+  catch { return "?"; }
+}
+
+interface RawPeerEntry { apiPort?: number; pubkey?: string; }
+
+async function broadcastA2A(text: string): Promise<void> {
+  const myRole = loadMyRole();
+  let peers: Record<string, RawPeerEntry>;
+  try {
+    peers = JSON.parse(readFileSync(resolve("axl/peers.json"), "utf8")) as Record<string, RawPeerEntry>;
+  } catch {
+    return;
+  }
+
+  const myEntry = peers[myRole];
+  const myPort = myEntry?.apiPort ?? 9002;
+
+  const tasks: Promise<unknown>[] = [];
+  for (const [role, entry] of Object.entries(peers)) {
+    if (role === myRole) continue;
+    if (!entry || typeof entry !== "object") continue;
+    const pk = entry.pubkey;
+    if (!pk) continue;
+
+    const url = `http://127.0.0.1:${myPort}/a2a/${pk}/`;
+    const body = {
+      jsonrpc: "2.0",
+      id: Date.now(),
+      method: "message/send",
+      params: {
+        message: {
+          kind: "message",
+          messageId: `progress-${Date.now()}-${role}`,
+          role: "user",
+          parts: [{ kind: "text", text }],
+          metadata: { fromRole: myRole, progress: true },
+        },
+      },
+    };
+    tasks.push(
+      fetch(url, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      }).catch(() => undefined),
+    );
+  }
+  await Promise.all(tasks);
+}
+
+async function withProgress<T>(
+  label: string,
+  fn: (progress: ScriptProgress) => Promise<T>,
+): Promise<T> {
+  const progress = newProgress(`${label} starting`);
+  console.log(`[progress] tracking ${label} every ${PROGRESS_MS / 1000}s`);
+  const tickId = setInterval(() => {
+    const elapsed = Math.floor((Date.now() - progress.startedAt) / 1000);
+    const text = `${label} · ${progress.status} · ${elapsed}s elapsed`;
+    broadcastA2A(text).catch((e) =>
+      console.log(`[progress] ping failed: ${e instanceof Error ? e.message : String(e)}`),
+    );
+  }, PROGRESS_MS);
+  try {
+    return await fn(progress);
+  } finally {
+    clearInterval(tickId);
+    const total = Math.floor((Date.now() - progress.startedAt) / 1000);
+    console.log(`[progress] ${label} ended after ${total}s — last status: ${progress.status}`);
+    broadcastA2A(`${label} done · ${progress.status} · ${total}s total`).catch(() => undefined);
+  }
+}
+
 type ToolHandler = (args: Record<string, unknown>) => Promise<unknown>;
 
 const tools: Record<string, ToolHandler> = {
@@ -177,8 +303,10 @@ const tools: Record<string, ToolHandler> = {
         },
       };
     }
-    const r = await runDemoScript("scripts/demo-aws-2.ts");
-    return { ...r, state: r.ok ? readState() : null };
+    return await withProgress("provision_ec2", async (progress) => {
+      const r = await runDemoScript("scripts/demo-aws-2.ts", {}, progress);
+      return { ...r, state: r.ok ? readState() : null };
+    });
   },
 
   // Step 3 — install OpenClaw on the provisioned EC2 box. Wraps
@@ -196,8 +324,10 @@ const tools: Record<string, ToolHandler> = {
       await sleep(2000);
       return { ok: true, mocked: true, target: targetIp };
     }
-    const r = await runDemoScript("scripts/demo-openclaw.ts", env);
-    return { ...r, target: targetIp };
+    return await withProgress("install_openclaw", async (progress) => {
+      const r = await runDemoScript("scripts/demo-openclaw.ts", env, progress);
+      return { ...r, target: targetIp };
+    });
   },
 };
 
