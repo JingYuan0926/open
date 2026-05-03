@@ -147,12 +147,11 @@ function UserBubble({ content }: { content: string }) {
 
 function StreamingText({
   text,
-  speed = 20,
+  speed = 10,
 }: {
   text: string;
   speed?: number;
 }) {
-  const tokens = React.useMemo(() => text.split(/(\s+)/), [text]);
   const [count, setCount] = React.useState(0);
 
   React.useEffect(() => {
@@ -160,12 +159,12 @@ function StreamingText({
   }, [text]);
 
   React.useEffect(() => {
-    if (count >= tokens.length) return;
+    if (count >= text.length) return;
     const t = setTimeout(() => setCount((c) => c + 1), speed);
     return () => clearTimeout(t);
-  }, [count, tokens.length, speed]);
+  }, [count, text.length, speed]);
 
-  return <>{tokens.slice(0, count).join("")}</>;
+  return <>{text.slice(0, count)}</>;
 }
 
 function AssistantDraft({
