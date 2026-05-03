@@ -209,7 +209,11 @@ function ackText(suffix = ""): string {
     case "provision_ec2":
       return `EC2 provisioned and ready${tag}`;
     case "install_openclaw":
-      return `OpenClaw deploy complete — Telegram bot opening on user${tag}`;
+      // Neutral on intent. The real "deploy complete + bot live" line is
+      // broadcast by demo-openclaw.ts inner mode after the SSH install +
+      // openUrl actually succeed, ~minutes after the outer-mode MCP call
+      // returns. Don't claim the work is done before it actually is.
+      return `OpenClaw install kicked off — dedicated Terminal running on user${tag}`;
     default:
       return `${tool} done${tag}`;
   }

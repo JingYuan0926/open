@@ -32,6 +32,61 @@ const MARKER_PATH = process.env.OPENCLAW_DEMO_MARKER ?? join(tmpdir(), "openclaw
 // this on the user's Mac so they can chat immediately — no copy-paste.
 const TELEGRAM_BOT_URL = "https://web.telegram.org/k/#@RightHandAI_NanoClawBot";
 
+// Broadcast a "deploy complete" message to every peer in axl/peers.json
+// over local AXL (POST :9002/a2a/<peer-pubkey>). Fired from inner mode
+// AFTER the SSH install + openUrl actually succeeded — so the
+// announcement is truthful, not premature. Also sends to self so the
+// local axl:start log shows [me → all].
+async function broadcastDeployDone(text: string): Promise<void> {
+  let myRole = "user";
+  try { myRole = readFileSync(resolve(".axl/role"), "utf8").trim(); } catch { /* ok */ }
+
+  let peers: Record<string, { apiPort?: number; pubkey?: string }>;
+  try {
+    peers = JSON.parse(readFileSync(resolve("axl/peers.json"), "utf8"));
+  } catch { return; }
+
+  const myPort = peers[myRole]?.apiPort ?? 9002;
+  const tasks: Promise<unknown>[] = [];
+  for (const [role, entry] of Object.entries(peers)) {
+    if (!entry || typeof entry !== "object" || !entry.pubkey) continue;
+    const url = `http://127.0.0.1:${myPort}/a2a/${entry.pubkey}`;
+    const body = {
+      jsonrpc: "2.0",
+      id: Date.now(),
+      method: "message/send",
+      params: {
+        message: {
+          kind: "message",
+          messageId: `deploy-done-${Date.now()}-${role}`,
+          role: "user",
+          parts: [{ kind: "text", text }],
+          metadata: {
+            fromRole: myRole,
+            broadcast: true,
+            kind: "ack",
+            tool: "install_openclaw",
+            chat: true,
+          },
+        },
+      },
+    };
+    const ctl = new AbortController();
+    const t = setTimeout(() => ctl.abort(), 5000);
+    tasks.push(
+      fetch(url, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+        signal: ctl.signal,
+      })
+        .catch(() => undefined)
+        .finally(() => clearTimeout(t)),
+    );
+  }
+  await Promise.all(tasks);
+}
+
 const cyan = "\x1b[36m";
 const yellow = "\x1b[1;33m";
 const green = "\x1b[32m";
@@ -217,13 +272,33 @@ echo "(For boot-survival, run 'pm2 startup' on the box and follow its sudo promp
   } else {
     console.log(`\n${green}━━ install complete ━━${reset}`);
 
+    // Show the Telegram bot URL in this terminal too (people watching
+    // the popup can read it / copy it / scan it), in addition to opening
+    // it on @user's browser automatically.
+    console.log(`${cyan}Telegram bot:${reset} ${yellow}${TELEGRAM_BOT_URL}${reset}`);
+
     // Open the Telegram bot page on the local (= user's) Mac so the
     // human can chat immediately. No CLI copy-paste needed.
+    let urlOpened = false;
     try {
       console.log(`${dim}Opening Telegram bot page in browser…${reset}`);
       await openUrl(TELEGRAM_BOT_URL);
+      urlOpened = true;
     } catch (e) {
       console.log(`${dim}(could not open browser: ${e instanceof Error ? e.message : String(e)} — visit ${TELEGRAM_BOT_URL} manually)${reset}`);
+    }
+
+    // Broadcast the truthful "deploy complete + bot live" line ONLY now,
+    // after the install + openUrl have actually succeeded. agent-c (who
+    // dispatched install_openclaw) sees this on their axl:start as
+    // [user → me] OpenClaw deploy complete — Telegram bot live at <url>.
+    const announcement = urlOpened
+      ? `OpenClaw deploy complete — Telegram bot is live at ${TELEGRAM_BOT_URL} and now opening on user's browser`
+      : `OpenClaw deploy complete — Telegram bot is live at ${TELEGRAM_BOT_URL}`;
+    try {
+      await broadcastDeployDone(announcement);
+    } catch (e) {
+      console.log(`${dim}(deploy-done broadcast failed: ${e instanceof Error ? e.message : String(e)})${reset}`);
     }
   }
 
