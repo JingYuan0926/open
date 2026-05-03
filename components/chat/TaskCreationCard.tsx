@@ -331,7 +331,7 @@ export function TaskCreationCard({
                 ? "Sign in wallet…"
                 : step === "confirming"
                   ? "Confirming…"
-                  : "Post on Sepolia"}
+                  : "Submit"}
             </Button>
           )}
 
