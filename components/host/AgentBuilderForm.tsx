@@ -313,7 +313,7 @@ export function AgentBuilderForm() {
             <Field label="Skill category" hint="Comma-separated for multiple.">
               <Input value={skill} onChange={(e) => setSkill(e.target.value)} />
             </Field>
-            <Field label="Price per call" hint="In 0G tokens.">
+            <Field label="Price per call" hint="In USDC.">
               <div className="flex items-center gap-1.5">
                 <Input
                   value={price}

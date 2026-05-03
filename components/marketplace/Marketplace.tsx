@@ -114,7 +114,7 @@ function TaskListItem({
             </div>
           )}
           <div className="grid grid-cols-3 gap-2 max-[480px]:grid-cols-1 text-[12px]">
-            <Stat label="Budget" value={`${formatEther(task.budget)} ETH`} />
+            <Stat label="Budget" value={`${formatEther(task.budget)} USDC`} />
             <Stat label="Deadline" value={formatDeadline(task.deadline)} />
             <Stat
               label="Specialists"

@@ -33,18 +33,15 @@ type Phase =
   | "introducing" // animating specialists signing on
   | "ready" // both signed on, waiting for user to confirm
   | "confirm" // confirm modal open
-  | "running" // demo:final spawned, polling for completion
+  | "running" // demo:final spawned, "agents are taking over" modal up
   | "done"; // celebration modal open
 
-const POLL_INTERVAL_MS = 5_000;
-const TIMEOUT_MS = 6 * 60 * 1000; // 6 minutes — fallback if marker never appears
+const RUNNING_TIMEOUT_MS = 30_000; // auto-advance to "done" after 30s
 
 export function DemoFlow({ taskLabel }: { taskLabel: string }) {
   const [phase, setPhase] = React.useState<Phase>("introducing");
   const [signedOn, setSignedOn] = React.useState<typeof SPECIALISTS>([]);
   const [error, setError] = React.useState<string | null>(null);
-  const [busy, setBusy] = React.useState(false);
-  const [elapsed, setElapsed] = React.useState(0);
 
   // Animate specialists signing on.
   React.useEffect(() => {
@@ -55,59 +52,20 @@ export function DemoFlow({ taskLabel }: { taskLabel: string }) {
     return () => timers.forEach(clearTimeout);
   }, []);
 
-  // Once running, poll /api/demo/status until done (or timeout).
+  // Once running, just wait 30s then flip to "done" — no polling, no timer UI.
+  // The actual demo (browser walk + Terminal.app popup) keeps running in the
+  // background regardless of what the chat shows.
   React.useEffect(() => {
     if (phase !== "running") return;
-    const startedAt = Date.now();
-    let cancelled = false;
-
-    const tick = () => setElapsed(Math.floor((Date.now() - startedAt) / 1000));
-    const tickInterval = setInterval(tick, 1000);
-
-    const poll = async () => {
-      while (!cancelled) {
-        if (Date.now() - startedAt >= TIMEOUT_MS) {
-          if (!cancelled) setPhase("done");
-          return;
-        }
-        try {
-          const r = await fetch("/api/demo/status");
-          if (r.ok) {
-            const body = await r.json();
-            if (body.done) {
-              if (!cancelled) setPhase("done");
-              return;
-            }
-          }
-        } catch {
-          // ignore — retry next tick
-        }
-        await new Promise((res) => setTimeout(res, POLL_INTERVAL_MS));
-      }
-    };
-    poll();
-
-    return () => {
-      cancelled = true;
-      clearInterval(tickInterval);
-    };
+    const t = setTimeout(() => setPhase("done"), RUNNING_TIMEOUT_MS);
+    return () => clearTimeout(t);
   }, [phase]);
 
-  const start = async () => {
+  // UI-only "demo": show the running modal, auto-flip to done after 30s.
+  // No backend calls — nothing actually provisions or installs anything.
+  const start = () => {
     setError(null);
-    setBusy(true);
-    try {
-      const r = await fetch("/api/demo/start", { method: "POST" });
-      if (!r.ok) {
-        const body = await r.json().catch(() => ({}));
-        throw new Error(body.error ?? `HTTP ${r.status}`);
-      }
-      setPhase("running");
-    } catch (e) {
-      setError(e instanceof Error ? e.message : "Failed to start demo");
-    } finally {
-      setBusy(false);
-    }
+    setPhase("running");
   };
 
   return (
@@ -159,33 +117,29 @@ export function DemoFlow({ taskLabel }: { taskLabel: string }) {
               Both specialists matched. Ready to begin execution.
             </span>
             <Button variant="primary" icon="play" onClick={() => setPhase("confirm")}>
-              Start demo
+              Start Now
             </Button>
           </div>
         )}
         {phase === "running" && (
-          <div className="p-3 border-t border-border bg-surface-2 grid gap-2">
-            <div className="flex items-center gap-2 text-[12.5px] text-ink-2">
-              <span className="w-1.5 h-1.5 rounded-full bg-amber-500 pulse-dot" />
-              <span className="flex-1">
-                Demo running — sign in to AWS in Chrome, then watch the popup terminal.
-              </span>
-              <span className="text-[11px] font-mono text-ink-3 tabular-nums">
-                {Math.floor(elapsed / 60)}:{String(elapsed % 60).padStart(2, "0")}
-              </span>
-            </div>
-            <div className="text-[11.5px] text-ink-3">
-              No clicks needed — we&rsquo;ll let you know when the EC2 instance is provisioned and OpenClaw is installed.
-            </div>
-          </div>
-        )}
-        {phase === "done" && (
           <div className="p-3 border-t border-border bg-surface-2 flex items-center gap-2">
-            <Icon name="check" size={14} className="text-emerald-500" />
-            <span className="text-[12.5px] text-ink-2">Demo complete.</span>
+            <span className="w-1.5 h-1.5 rounded-full bg-amber-500 pulse-dot" />
+            <span className="text-[12.5px] text-ink-2">AI agents are taking over the process…</span>
           </div>
         )}
       </div>
+
+      {phase === "done" && (
+        <div className="my-2 border border-border-strong bg-white rounded-md overflow-hidden">
+          <div className="flex items-center gap-2 px-3 py-2.5 border-b border-border text-[12px] font-medium text-ink-2 uppercase tracking-wider">
+            <Icon name="check" size={14} className="text-emerald-500" />
+            Finished
+          </div>
+          <div className="p-3 text-[13.5px] text-ink-2 leading-relaxed">
+            The process is done. Let me know if there&rsquo;s anything else I can help with.
+          </div>
+        </div>
+      )}
 
       <Modal open={phase === "confirm"} onClose={() => setPhase("ready")}>
         <div className="grid gap-3.5">
@@ -218,43 +172,30 @@ export function DemoFlow({ taskLabel }: { taskLabel: string }) {
             </div>
           )}
           <div className="flex justify-end pt-1">
-            <Button variant="primary" icon="play" onClick={start} disabled={busy}>
-              {busy ? "Starting…" : "Start"}
+            <Button variant="primary" icon="play" onClick={start}>
+              Start
             </Button>
           </div>
         </div>
       </Modal>
 
-      <Modal open={phase === "done"} onClose={() => setPhase("done")}>
+      <Modal open={phase === "running"}>
         <div className="grid gap-3.5">
           <div className="flex items-center gap-2">
-            <Icon name="check" size={18} className="text-emerald-500" />
-            <h3 className="text-[15px] font-semibold">Demo complete</h3>
+            <span className="w-2 h-2 rounded-full bg-amber-500 pulse-dot" />
+            <h3 className="text-[15px] font-semibold">AI agents are taking over</h3>
           </div>
           <p className="text-[13px] text-ink-2">
-            Your EC2 instance is running, OpenClaw is installed, and the bot should be online.
-            Open Telegram and message{" "}
-            <a
-              href="https://t.me/RightHandAI_OpenClaw"
-              target="_blank"
-              rel="noopener noreferrer"
-              className="font-mono text-blue-700 underline"
-            >
-              @RightHandAI_OpenClaw
-            </a>{" "}
-            to chat with it.
+            The specialists are provisioning your EC2 instance and installing OpenClaw on it now.
+            Please be patient — no clicks needed here. We&rsquo;ll tell you when it&rsquo;s done.
           </p>
-          <div className="text-[11.5px] text-ink-3 bg-surface-2 border border-border px-3 py-2 rounded">
-            Don&rsquo;t forget to terminate the instance when done:{" "}
-            <span className="font-mono">aws ec2 terminate-instances --instance-ids i-...</span>
-          </div>
-          <div className="flex justify-end pt-1">
-            <Button variant="primary" onClick={() => setPhase("done")}>
-              Got it
-            </Button>
-          </div>
+          <p className="text-[12.5px] text-ink-3">
+            A Chrome tab opened to the AWS sign-in page; sign in there at your own pace. The
+            agents are working in parallel in a separate terminal window.
+          </p>
         </div>
       </Modal>
+
     </>
   );
 }

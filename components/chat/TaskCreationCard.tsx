@@ -35,17 +35,37 @@ export function suggestSkills(prompt: string): string {
 
 type Step = "editing" | "awaiting" | "confirming" | "posted" | "error";
 
-const BUDGET_MIN = 0.001;
-const BUDGET_MAX = 0.05;
-const BUDGET_STEP = 0.001;
-const DEADLINE_MIN = 5;
-const DEADLINE_MAX = 120;
-const DEADLINE_STEP = 5;
 const SPECIALISTS_MIN = 1;
 const SPECIALISTS_MAX = 5;
+const SPEED_MIN = 1;
+const SPEED_MAX = 10;
+
+// Additive pricing: each lever contributes its own line to the breakdown.
+const RATE_PER_SPECIALIST = 0.001; // USDC
+const RATE_PER_SPEED_LEVEL = 0.0008; // USDC per +1 speed beyond 1×
+const SWARM_COORDINATION_FEE = 0.0005; // USDC, only when >= 2 specialists
+
+function computeBreakdown(specialists: number, speedLevel: number) {
+  const specialistsCost = specialists * RATE_PER_SPECIALIST;
+  const speedCost = (speedLevel - SPEED_MIN) * RATE_PER_SPEED_LEVEL;
+  const swarmCost = specialists >= 2 ? SWARM_COORDINATION_FEE : 0;
+  const total = Number((specialistsCost + speedCost + swarmCost).toFixed(4));
+  return { specialistsCost, speedCost, swarmCost, total };
+}
+
+// Speed level → estimated completion time. 1× ≈ 10 min, 10× ≈ 1 min.
+function estimatedSeconds(speedLevel: number): number {
+  return Math.round(600 - (speedLevel - SPEED_MIN) * 60);
+}
+
+function fmtTime(sec: number): string {
+  if (sec < 60) return `${sec} sec`;
+  const m = Math.round(sec / 60);
+  return `${m} min`;
+}
 
 function fmtEth(n: number): string {
-  return n.toFixed(3).replace(/\.?0+$/, "") || "0";
+  return n.toFixed(4).replace(/\.?0+$/, "") || "0";
 }
 
 export function TaskCreationCard({
@@ -66,11 +86,13 @@ export function TaskCreationCard({
     () => initialSkills ?? suggestSkills(initialDescription),
     [initialSkills, initialDescription],
   );
-  const [budgetEth, setBudgetEth] = React.useState(0.005);
-  const [deadlineMinutes, setDeadlineMinutes] = React.useState(30);
+  const [speedLevel, setSpeedLevel] = React.useState(5);
   const [maxSpecialists, setMaxSpecialists] = React.useState(
     Math.min(SPECIALISTS_MAX, Math.max(SPECIALISTS_MIN, initialMaxSpecialists)),
   );
+  const breakdown = computeBreakdown(maxSpecialists, speedLevel);
+  const isSwarm = maxSpecialists >= 2;
+  const etaSeconds = estimatedSeconds(speedLevel);
   const [validationError, setValidationError] = React.useState<string | null>(null);
 
   const {
@@ -141,10 +163,10 @@ export function TaskCreationCard({
       setValidationError("Description is required.");
       return;
     }
-    const ts = Math.floor(Date.now() / 1000) + deadlineMinutes * 60;
+    const ts = Math.floor(Date.now() / 1000) + etaSeconds;
     let budgetWei: bigint;
     try {
-      budgetWei = parseEther(budgetEth.toString());
+      budgetWei = parseEther(breakdown.total.toString());
     } catch {
       setValidationError("Invalid budget.");
       return;
@@ -179,13 +201,6 @@ export function TaskCreationCard({
     }
   })();
 
-  const perSpecialist = budgetEth / maxSpecialists;
-  const deadlineAt = new Date(Date.now() + deadlineMinutes * 60 * 1000);
-  const deadlineLabel = deadlineAt.toLocaleTimeString([], {
-    hour: "2-digit",
-    minute: "2-digit",
-  });
-
   return (
     <div className="my-2 border border-border-strong bg-white rounded-md overflow-hidden">
       <div className="flex items-center gap-2 px-3 py-2.5 border-b border-border text-[12px] font-medium text-ink-2 uppercase tracking-wider">
@@ -195,74 +210,66 @@ export function TaskCreationCard({
       </div>
 
       <div className="p-3 grid gap-4">
-        <div>
-          <label className="block text-[11.5px] uppercase tracking-wide text-ink-3 mb-1">
-            Description
-          </label>
-          <textarea
-            value={description}
-            onChange={(e) => setDescription(e.target.value)}
+        <div className="grid grid-cols-2 gap-2.5">
+          <BoxedSlider
+            label="Specialists"
+            value={`${maxSpecialists}`}
+            min={SPECIALISTS_MIN}
+            max={SPECIALISTS_MAX}
+            step={1}
+            raw={maxSpecialists}
+            onChange={(v) => setMaxSpecialists(Math.round(v))}
+            minLabel={`${SPECIALISTS_MIN}`}
+            maxLabel={`${SPECIALISTS_MAX}`}
             disabled={isLocked}
-            rows={2}
-            className="w-full px-2.5 py-2 bg-white border border-border rounded-md text-[13px] text-ink resize-y min-h-[44px] focus:outline-none focus:border-accent focus:ring-2 focus:ring-accent/15 transition-colors disabled:bg-surface-2 disabled:text-ink-2"
+            hint={isSwarm ? "Swarm mode" : "Solo"}
+          />
+
+          <BoxedSlider
+            label="Speed up"
+            value={`${speedLevel}×`}
+            min={SPEED_MIN}
+            max={SPEED_MAX}
+            step={1}
+            raw={speedLevel}
+            onChange={(v) => setSpeedLevel(Math.round(v))}
+            minLabel={`${SPEED_MIN}×`}
+            maxLabel={`${SPEED_MAX}×`}
+            disabled={isLocked}
+            hint={`≈ ${fmtTime(etaSeconds)} to complete`}
           />
         </div>
 
-        <SliderRow
-          label="Budget"
-          value={`${fmtEth(budgetEth)} ETH`}
-          min={BUDGET_MIN}
-          max={BUDGET_MAX}
-          step={BUDGET_STEP}
-          raw={budgetEth}
-          onChange={setBudgetEth}
-          minLabel={`${fmtEth(BUDGET_MIN)} ETH`}
-          maxLabel={`${fmtEth(BUDGET_MAX)} ETH`}
-          disabled={isLocked}
-        />
-
-        <SliderRow
-          label="Specialists"
-          value={`${maxSpecialists}`}
-          min={SPECIALISTS_MIN}
-          max={SPECIALISTS_MAX}
-          step={1}
-          raw={maxSpecialists}
-          onChange={(v) => setMaxSpecialists(Math.round(v))}
-          minLabel={`${SPECIALISTS_MIN}`}
-          maxLabel={`${SPECIALISTS_MAX}`}
-          disabled={isLocked}
-        />
-
-        <SliderRow
-          label="Deadline"
-          value={`${deadlineMinutes} min`}
-          min={DEADLINE_MIN}
-          max={DEADLINE_MAX}
-          step={DEADLINE_STEP}
-          raw={deadlineMinutes}
-          onChange={(v) => setDeadlineMinutes(Math.round(v))}
-          minLabel={`${DEADLINE_MIN} min`}
-          maxLabel={`${DEADLINE_MAX} min`}
-          disabled={isLocked}
-          hint={`Auto-cancels around ${deadlineLabel}`}
-        />
-
-        <div className="grid grid-cols-2 gap-2.5 pt-1">
-          <div className="rounded-md border border-border bg-surface-2 px-3 py-2">
-            <div className="text-[10.5px] uppercase tracking-wide text-ink-3">
-              Total cost
-            </div>
-            <div className="text-[16px] font-mono font-semibold text-ink tabular-nums">
-              {fmtEth(budgetEth)} ETH
-            </div>
+        <div>
+          <div className="text-[11.5px] uppercase tracking-wide text-ink-3 mb-1.5">
+            Total cost
           </div>
-          <div className="rounded-md border border-border bg-surface-2 px-3 py-2">
-            <div className="text-[10.5px] uppercase tracking-wide text-ink-3">
-              Per specialist
+          <div className="rounded-md border border-border bg-surface-2 px-3.5 py-3 grid gap-1 text-[12.5px] text-ink-2">
+            <div className="flex items-center justify-between">
+              <span>Specialists × {maxSpecialists}</span>
+              <span className="font-mono tabular-nums text-ink">
+                {fmtEth(breakdown.specialistsCost)} USDC
+              </span>
             </div>
-            <div className="text-[16px] font-mono font-semibold text-ink tabular-nums">
-              {fmtEth(perSpecialist)} ETH
+            {isSwarm && (
+              <div className="flex items-center justify-between pl-3">
+                <span className="text-ink-3">— Swarm mode</span>
+                <span className="font-mono tabular-nums text-ink">
+                  +{fmtEth(breakdown.swarmCost)} USDC
+                </span>
+              </div>
+            )}
+            <div className="flex items-center justify-between">
+              <span>Speed boost × {speedLevel}</span>
+              <span className="font-mono tabular-nums text-ink">
+                +{fmtEth(breakdown.speedCost)} USDC
+              </span>
+            </div>
+            <div className="border-t border-border mt-1.5 pt-2 flex items-center justify-between">
+              <span className="text-[13px] font-medium text-ink">Total</span>
+              <span className="text-[16px] font-mono font-semibold text-ink tabular-nums">
+                {fmtEth(breakdown.total)} USDC
+              </span>
             </div>
           </div>
         </div>
@@ -291,7 +298,24 @@ export function TaskCreationCard({
           </div>
         )}
 
-        <div className="flex items-center gap-2 pt-1">
+        <div className="flex items-center justify-end gap-2 pt-1">
+          {hash && (
+            <a
+              href={`https://sepolia.etherscan.io/tx/${hash}`}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="mr-auto text-[11.5px] font-mono text-blue-700 underline break-all"
+            >
+              {hash.slice(0, 10)}…{hash.slice(-8)}
+            </a>
+          )}
+
+          {step === "error" && (
+            <Button variant="ghost" icon="refresh" onClick={reset}>
+              Try again
+            </Button>
+          )}
+
           {!address ? (
             <ConnectButton.Custom>
               {({ openConnectModal, mounted }) => (
@@ -324,40 +348,17 @@ export function TaskCreationCard({
                 ? "Sign in wallet…"
                 : step === "confirming"
                   ? "Confirming…"
-                  : "Post on Sepolia"}
+                  : "Pay via x402"}
             </Button>
-          )}
-
-          {step === "error" && (
-            <Button variant="ghost" icon="refresh" onClick={reset}>
-              Try again
-            </Button>
-          )}
-
-          {hash && (
-            <a
-              href={`https://sepolia.etherscan.io/tx/${hash}`}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="ml-auto text-[11.5px] font-mono text-blue-700 underline break-all"
-            >
-              {hash.slice(0, 10)}…{hash.slice(-8)}
-            </a>
           )}
         </div>
 
-        <div className="text-[11px] text-ink-3">
-          Posts to <span className="font-mono">TaskMarket</span> on Sepolia. The
-          contract escrows the budget, mints{" "}
-          <span className="font-mono">task-&#123;id&#125;.{ENS_PARENT_DOMAIN}</span>,
-          and writes description / budget / deadline / status as ENS text records.
-        </div>
       </div>
     </div>
   );
 }
 
-function SliderRow({
+function BoxedSlider({
   label,
   value,
   min,
@@ -383,30 +384,76 @@ function SliderRow({
   hint?: string;
 }) {
   return (
-    <div className="grid gap-1.5">
-      <div className="flex items-baseline justify-between">
-        <span className="text-[11.5px] uppercase tracking-wide text-ink-3">
-          {label}
-        </span>
-        <span className="text-[15px] font-mono font-semibold text-ink tabular-nums">
-          {value}
-        </span>
+    <div>
+      <div className="text-[11.5px] uppercase tracking-wide text-ink-3 mb-1.5">
+        {label}
       </div>
-      <input
-        type="range"
-        min={min}
-        max={max}
-        step={step}
-        value={raw}
-        onChange={(e) => onChange(Number(e.target.value))}
-        disabled={disabled}
-        className="w-full h-1.5 accent-accent cursor-pointer disabled:cursor-not-allowed disabled:opacity-50"
-      />
-      <div className="flex items-center justify-between text-[10.5px] text-ink-4 font-mono">
-        <span>{minLabel}</span>
-        <span>{maxLabel}</span>
+      <div className="rounded-md border border-border bg-surface-2 px-3 py-2.5 grid gap-2">
+        <div className="flex items-center justify-between gap-2">
+          <div className="flex items-baseline gap-2 min-w-0">
+            <span className="text-[18px] font-mono font-semibold text-ink tabular-nums leading-none shrink-0">
+              {value}
+            </span>
+            {hint && (
+              <span className="text-[11px] text-ink-3 leading-tight truncate">
+                ({hint})
+              </span>
+            )}
+          </div>
+          <div className="flex items-center gap-1 shrink-0">
+            <StepButton
+              symbol="−"
+              ariaLabel={`Decrease ${label}`}
+              disabled={disabled || raw <= min}
+              onClick={() => onChange(Math.max(min, raw - step))}
+            />
+            <StepButton
+              symbol="+"
+              ariaLabel={`Increase ${label}`}
+              disabled={disabled || raw >= max}
+              onClick={() => onChange(Math.min(max, raw + step))}
+            />
+          </div>
+        </div>
+        <input
+          type="range"
+          min={min}
+          max={max}
+          step={step}
+          value={raw}
+          onChange={(e) => onChange(Number(e.target.value))}
+          disabled={disabled}
+          className="w-full h-1.5 accent-accent cursor-pointer disabled:cursor-not-allowed disabled:opacity-50"
+        />
+        <div className="flex items-center justify-between text-[10px] text-ink-4 font-mono">
+          <span>{minLabel}</span>
+          <span>{maxLabel}</span>
+        </div>
       </div>
-      {hint && <p className="text-[11px] text-ink-3 leading-tight">{hint}</p>}
     </div>
+  );
+}
+
+function StepButton({
+  symbol,
+  ariaLabel,
+  disabled,
+  onClick,
+}: {
+  symbol: string;
+  ariaLabel: string;
+  disabled?: boolean;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      aria-label={ariaLabel}
+      disabled={disabled}
+      onClick={onClick}
+      className="w-6 h-6 grid place-items-center rounded-md border border-border bg-white text-ink-2 text-[14px] leading-none font-medium hover:bg-surface-3 hover:text-ink active:bg-surface-3 disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-white disabled:hover:text-ink-2 transition-colors"
+    >
+      {symbol}
+    </button>
   );
 }

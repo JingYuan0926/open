@@ -290,23 +290,27 @@ class RoleAwareExecutor implements AgentExecutor {
 
     // Internal narration: local-only "[me] doing X" line. Skip the arrow
     // entirely — it's not a conversation, it's the AI's own monologue.
+    // Content takes the speaker's colour too so the chat is fully colour-coded.
     if (isInternal) {
-      console.log(`${C.dim}${ts}${C.reset} ${C.magenta}[me]${C.reset} ${input}`);
+      console.log(`${C.dim}${ts}${C.reset} ${C.magenta}[me]${C.reset} ${C.magenta}${input}${C.reset}`);
     } else if (isBystander) {
-      // Observed dispatch between two other roles. Cyan, with the actual
-      // sender → target labels (no "me" anywhere in the line).
+      // Observed dispatch between two other roles. Label is cyan ("I'm
+      // overhearing"), but the content takes the SENDER's colour so you
+      // can still tell at-a-glance which agent is talking.
+      const senderC = colorForRole(fromRole, ROLE);
       console.log(
-        `${C.dim}${ts}${C.reset} ${C.cyan}[${fromRole} → ${directedTarget}]${C.reset} ${input}`,
+        `${C.dim}${ts}${C.reset} ${C.cyan}[${fromRole} → ${directedTarget}]${C.reset} ${senderC}${input}${C.reset}`,
       );
     } else {
       // Conversational line. Each role gets its own fixed colour; the
       // local role is always rendered as "me" in magenta. Directed
       // self-echoes ([me → <target>]) carry their target in metadata.
+      // Both the label AND the message content render in the sender's colour.
       const fromLabel = isSelf ? "me" : fromRole;
       const toLabel = isSelf ? (directedTarget ?? "all") : "me";
       const fromC = colorForRole(fromRole, ROLE);
       console.log(
-        `${C.dim}${ts}${C.reset} ${fromC}[${fromLabel}${ccTag} → ${toLabel}]${C.reset} ${input}`,
+        `${C.dim}${ts}${C.reset} ${fromC}[${fromLabel}${ccTag} → ${toLabel}]${C.reset} ${fromC}${input}${C.reset}`,
       );
     }
 

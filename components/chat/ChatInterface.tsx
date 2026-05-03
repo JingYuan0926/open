@@ -3,7 +3,6 @@ import { Welcome } from "@/components/chat/Welcome";
 import { ChatInput } from "@/components/chat/ChatInput";
 import { TaskCreationCard, suggestSkills } from "@/components/chat/TaskCreationCard";
 import { DemoFlow } from "@/components/chat/DemoFlow";
-import { MODES } from "@/lib/mock-data";
 import type { ModeId } from "@/types";
 
 type ChatItem =
@@ -19,7 +18,9 @@ const MODE_TO_MAX: Record<ModeId, number> = {
   deep: 5,
 };
 
-const THINKING_MS = 5000;
+const THINKING_STEP_MS = 2000;
+const THINKING_STEPS = 3;
+const THINKING_MS = THINKING_STEP_MS * THINKING_STEPS;
 
 export function ChatInterface() {
   const [input, setInput] = React.useState("");
@@ -85,8 +86,6 @@ export function ChatInterface() {
     });
   }, []);
 
-  const modeLabel = MODES.find((x) => x.id === mode)!.label;
-
   return (
     <div className="min-h-0 min-w-0">
       <div className="grid grid-rows-[1fr_auto] h-full min-h-0 bg-bg relative">
@@ -99,14 +98,14 @@ export function ChatInterface() {
                 if (it.kind === "user") return <UserBubble key={it.id} content={it.content} />;
                 if (it.kind === "demo")
                   return (
-                    <AssistantWrapper key={it.id} modeLabel={modeLabel}>
+                    <AssistantWrapper key={it.id}>
                       <DemoFlow taskLabel={it.label} />
                     </AssistantWrapper>
                   );
                 if (it.kind === "thinking")
                   return (
-                    <AssistantWrapper key={it.id} modeLabel={modeLabel}>
-                      <ThinkingIndicator />
+                    <AssistantWrapper key={it.id}>
+                      <ThinkingIndicator prompt={it.prompt} />
                     </AssistantWrapper>
                   );
                 return (
@@ -114,7 +113,6 @@ export function ChatInterface() {
                     key={it.id}
                     draftId={it.id}
                     prompt={it.prompt}
-                    modeLabel={modeLabel}
                     maxSpecialists={MODE_TO_MAX[it.mode]}
                     onPosted={handlePosted}
                   />
@@ -135,37 +133,51 @@ export function ChatInterface() {
 
 function UserBubble({ content }: { content: string }) {
   return (
-    <div className="flex gap-3.5 py-4 border-t border-border first:border-t-0">
-      <div className="w-7 h-7 rounded-md bg-gradient-to-br from-slate-500 to-slate-800 text-white grid place-items-center text-[12px] font-semibold shrink-0">
-        JK
-      </div>
-      <div className="flex-1 min-w-0 pt-0.5">
-        <div className="font-medium text-[13.5px] mb-1">You</div>
-        <p className="text-[14px] leading-relaxed">{content}</p>
+    <div className="flex justify-end py-3">
+      <div className="max-w-[75%] px-4 py-2.5 rounded-2xl bg-surface-3 text-ink text-[14px] leading-relaxed whitespace-pre-wrap break-words">
+        {content}
       </div>
     </div>
   );
 }
 
+function StreamingText({
+  text,
+  speed = 10,
+}: {
+  text: string;
+  speed?: number;
+}) {
+  const [count, setCount] = React.useState(0);
+
+  React.useEffect(() => {
+    setCount(0);
+  }, [text]);
+
+  React.useEffect(() => {
+    if (count >= text.length) return;
+    const t = setTimeout(() => setCount((c) => c + 1), speed);
+    return () => clearTimeout(t);
+  }, [count, text.length, speed]);
+
+  return <>{text.slice(0, count)}</>;
+}
+
 function AssistantDraft({
   draftId,
   prompt,
-  modeLabel,
   maxSpecialists,
   onPosted,
 }: {
   draftId: string;
   prompt: string;
-  modeLabel: string;
   maxSpecialists: number;
   onPosted: (draftId: string, label: string) => void;
 }) {
   return (
-    <AssistantWrapper modeLabel={modeLabel}>
+    <AssistantWrapper>
       <p className="mb-2.5">
-        Based on your prompt, here&rsquo;s the plan. Tune the budget,
-        specialists, and deadline below — then post on Sepolia to invite
-        matching specialists.
+        <StreamingText text="Here's the plan. Tune the specialists and how fast you want it done — then invite matching specialists." />
       </p>
       <TaskCreationCard
         initialDescription={prompt}
@@ -177,74 +189,63 @@ function AssistantDraft({
   );
 }
 
-function ThinkingIndicator() {
-  const steps = React.useMemo(
-    () => [
-      "Reading your prompt",
-      "Resolving specialists from ENS",
-      "Matching skills against the registry",
-      "Drafting the task spec",
-    ],
-    [],
-  );
+function ThinkingIndicator({ prompt }: { prompt: string }) {
+  const steps = React.useMemo(() => {
+    const trimmed = prompt.trim();
+    const short = trimmed.length > 90 ? `${trimmed.slice(0, 87)}…` : trimmed;
+    return [
+      {
+        label: "Reading the prompt",
+        commentary: `User wants: "${short}". Identifying intent and required skills.`,
+      },
+      {
+        label: "Designing the task",
+        commentary: "Drafting the description, picking specialist count, and pricing the deadline.",
+      },
+      {
+        label: "Asking permission from user",
+        commentary: "Spec is ready — review the parameters and post on Sepolia when you're set.",
+      },
+    ];
+  }, [prompt]);
+
   const [active, setActive] = React.useState(0);
 
   React.useEffect(() => {
-    const tick = THINKING_MS / steps.length;
-    const timers = steps.map((_, i) =>
-      setTimeout(() => setActive(i + 1), tick * (i + 1)),
-    );
-    return () => timers.forEach((t) => clearTimeout(t));
-  }, [steps]);
+    if (active >= steps.length - 1) return;
+    const t = setTimeout(() => setActive((a) => a + 1), THINKING_STEP_MS);
+    return () => clearTimeout(t);
+  }, [active, steps.length]);
+
+  const current = steps[active];
 
   return (
-    <div className="grid gap-1.5 text-[13.5px]">
-      {steps.map((s, i) => {
-        const done = i < active;
-        const current = i === active;
-        return (
-          <div key={i} className="flex items-center gap-2.5">
-            <span
-              aria-hidden
-              className={[
-                "inline-block w-3 h-3 rounded-full shrink-0",
-                done
-                  ? "bg-emerald-500"
-                  : current
-                    ? "bg-accent pulse-ring"
-                    : "bg-surface-3 border border-border",
-              ].join(" ")}
-            />
-            <span className={done || current ? "text-ink" : "text-ink-3"}>
-              {s}
-              {current ? "…" : ""}
-            </span>
-          </div>
-        );
-      })}
+    <div className="grid gap-1.5 text-[13.5px] min-h-[44px]">
+      <div className="flex items-center gap-2 text-ink">
+        <span
+          aria-hidden
+          className="inline-block w-2.5 h-2.5 rounded-full bg-accent pulse-ring shrink-0"
+        />
+        <span className="font-medium">
+          {current.label}
+          <span className="text-ink-3">…</span>
+        </span>
+      </div>
+      <p className="text-[12.5px] text-ink-3 italic leading-snug pl-[18px]">
+        <StreamingText key={active} text={current.commentary} speed={15} />
+      </p>
     </div>
   );
 }
 
 function AssistantWrapper({
-  modeLabel,
   children,
 }: {
-  modeLabel: string;
   children: React.ReactNode;
 }) {
   return (
-    <div className="flex gap-3.5 py-4 border-t border-border first:border-t-0">
-      <div className="w-7 h-7 rounded-md bg-accent text-accent-fg grid place-items-center text-[12px] font-medium shrink-0">
-        R
-      </div>
-      <div className="flex-1 min-w-0 pt-0.5">
-        <div className="font-medium text-[13.5px] mb-1 flex items-baseline gap-2 flex-wrap">
-          Right-Hand{" "}
-          <span className="text-[12px] text-ink-3 font-normal">{modeLabel} mode</span>
-        </div>
-        <div className="text-[14px] leading-relaxed text-ink">{children}</div>
-      </div>
+    <div className="py-4 border-t border-border first:border-t-0">
+      <div className="text-[14px] leading-relaxed text-ink">{children}</div>
     </div>
   );
 }

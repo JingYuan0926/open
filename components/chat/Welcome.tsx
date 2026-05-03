@@ -1,4 +1,3 @@
-import * as React from "react";
 import { Icon } from "@/components/ui/Icon";
 import { EXAMPLE_PROMPTS } from "@/lib/mock-data";
 
