@@ -5,15 +5,12 @@
 //
 // Resolves <target-role> → pubkey via axl/peers.json, builds a JSON-RPC
 // envelope, POSTs to local AXL :9002/mcp/<peer-pubkey>/<service>, and prints
-// the response. AXL forwards over Yggdrasil to the receiver, which dispatches
-// to its registered MCP server.
+// the response.
 //
-// While the MCP call is in flight, this also:
-//   1. Broadcasts "[me] starting <tool>" via A2A to every other peer.
-//   2. Polls local agent.ts /messages every 1.5s for incoming chatter
-//      (progress pings from the receiver, plus anything other peers say)
-//      and prints it live so the audience sees the swarm talking.
-//   3. Broadcasts "[me] ack <tool>" once the response arrives.
+// Convention: this terminal stays quiet. It prints the call going out, the
+// result coming back, and broadcast errors only. All cross-machine chat
+// lands in the axl:start terminal (agent.ts logs inbound A2A; aws.ts logs
+// progress pings). To watch the conversation, look there.
 
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
@@ -49,7 +46,6 @@ try { myRole = readFileSync(resolve(".axl/role"), "utf8").trim(); } catch { /* o
 
 const myEntry = peers[myRole] as PeerEntry | undefined;
 const apiPort = myEntry?.apiPort ?? 9002;
-const a2aPort = parseInt(process.env.A2A_PORT ?? "9004", 10);
 
 const jsonRpc = {
   jsonrpc: "2.0" as const,
@@ -64,33 +60,18 @@ const dim = "\x1b[2m";
 const cyan = "\x1b[36m";
 const yellow = "\x1b[1;33m";
 const green = "\x1b[32m";
+const red = "\x1b[31m";
 const magenta = "\x1b[35m";
 const reset = "\x1b[0m";
-
-// Per-role colour so the audience can scan who's saying what.
-function roleColor(role: string): string {
-  if (role === myRole) return cyan;
-  if (role === targetRole) return green;
-  return magenta;
-}
-
-// Local speaker tag — every terminal sees its own role as "me".
-function speakerLabel(role: string): string {
-  return role === myRole ? "me" : role;
-}
 
 console.log(`${dim}[mcp:call]${reset} ${cyan}${myRole}${reset} → ${yellow}${targetRole}${reset}.${service}.${tool}(${JSON.stringify(toolArgs)})`);
 console.log(`${dim}[mcp:call] POST ${url}${reset}`);
 
-interface RemoteMessage {
-  seq: number;
-  ts: string;
-  fromRole: string;
-  text: string;
-  isCc: boolean;
-  isProgress: boolean;
-}
-
+// ──────────────────────────────────────────────────────────────────────
+//  Broadcast helpers — silent on success. The actual chat narration is
+//  rendered on remote axl:start terminals (agent.ts logs everything
+//  inbound). We just send and stay quiet.
+// ──────────────────────────────────────────────────────────────────────
 async function broadcastA2A(text: string, kind: "starting" | "ack"): Promise<void> {
   const tasks: Promise<unknown>[] = [];
   for (const [role, raw] of Object.entries(peers)) {
@@ -98,8 +79,6 @@ async function broadcastA2A(text: string, kind: "starting" | "ack"): Promise<voi
     const entry = raw as PeerEntry | undefined;
     if (!entry?.pubkey) continue;
 
-    // No trailing slash — matches scripts/axl-send.ts. AXL routes the POST
-    // directly to the remote agent.ts JSON-RPC handler at /.
     const target = `http://127.0.0.1:${apiPort}/a2a/${entry.pubkey}`;
     const body = {
       jsonrpc: "2.0",
@@ -111,7 +90,6 @@ async function broadcastA2A(text: string, kind: "starting" | "ack"): Promise<voi
           messageId: `${kind}-${Date.now()}-${role}`,
           role: "user",
           parts: [{ kind: "text", text }],
-          // tool is in metadata so agent.ts chat rules can match precisely.
           metadata: { fromRole: myRole, broadcast: true, kind, tool, chat: true },
         },
       },
@@ -128,37 +106,28 @@ async function broadcastA2A(text: string, kind: "starting" | "ack"): Promise<voi
         .then((r) => {
           clearTimeout(timer);
           if (!r.ok) {
-            console.log(`${dim}[chat]${reset} ${magenta}✗${reset} broadcast to ${role} returned HTTP ${r.status}`);
-          } else {
-            console.log(`${dim}[chat]${reset} ${green}✓${reset} broadcast to ${role}`);
+            console.log(`${dim}[mcp:call]${reset} ${magenta}✗${reset} broadcast to ${role} returned HTTP ${r.status}`);
           }
         })
         .catch((err) => {
           clearTimeout(timer);
           const msg = err instanceof Error ? err.message : String(err);
-          console.log(`${dim}[chat]${reset} ${magenta}✗${reset} broadcast to ${role} failed: ${msg}`);
+          console.log(`${dim}[mcp:call]${reset} ${magenta}✗${reset} broadcast to ${role} failed: ${msg}`);
         }),
     );
   }
   await Promise.all(tasks);
 }
 
-// Per-tool starting/ack flavour text. The speaker tag is rendered per-
-// terminal as [me] for the local role and [<other>] for everyone else.
-// The Telegram URL no longer appears here — install_openclaw opens it on
-// @user's browser directly when the deploy succeeds.
+// Per-tool starting/ack flavour text. Sent over A2A so other peers' axl:start
+// terminals show it; not echoed locally on this terminal.
 function startingText(): string {
   switch (tool) {
     case "aws_signin":
       return `hey @agent-c — let me handle the AWS login. while I do, can you grab the Telegram bot ID + token?`;
     case "provision_ec2":
-      // The "AWS signin done" line lives here, not at the end of signin —
-      // it's the natural beat that fires only when the human actually
-      // triggers provision (i.e. when they've finished logging in).
       return `AWS signin done. starting EC2 provision now — t3.micro on us-east-1`;
     case "install_openclaw":
-      // Handoff line lives at install start so it fires when the deploy
-      // actually kicks off, not as a fake auto-reply when provision ends.
       return `got it — handoff received. starting OpenClaw deploy onto the new EC2 box`;
     default:
       return `starting ${tool}(${JSON.stringify(toolArgs)})`;
@@ -169,60 +138,20 @@ function ackText(suffix = ""): string {
   const tag = suffix ? ` ${suffix}` : "";
   switch (tool) {
     case "aws_signin":
-      // Quiet — the "done" announcement fires at the start of provision instead.
       return `browser is open on @user — sign in, then run mcp:demo:provision when you're ready${tag}`;
     case "provision_ec2":
       return `EC2 ready — handing off to @agent-c for the OpenClaw deploy${tag}`;
     case "install_openclaw":
-      // No URL printed — install_openclaw opens the Telegram page on @user
-      // directly so the human can chat without copy-pasting a link.
       return `deploy complete! @user the Telegram bot page should be opening now${tag}`;
     default:
       return `ack ${tool}${tag}`;
   }
 }
 
-async function fetchSince(since: number): Promise<{ messages: RemoteMessage[]; latestSeq: number } | null> {
-  try {
-    const r = await fetch(`http://127.0.0.1:${a2aPort}/messages?since=${since}`);
-    if (!r.ok) return null;
-    return (await r.json()) as { messages: RemoteMessage[]; latestSeq: number };
-  } catch {
-    return null;
-  }
-}
-
-function printRemote(m: RemoteMessage) {
-  const c = roleColor(m.fromRole);
-  const tag = m.isProgress ? "📡" : m.isCc ? "cc" : "→";
-  console.log(`${dim}${m.ts.slice(11, 19)}${reset} ${c}[${speakerLabel(m.fromRole)}]${reset} ${tag} ${m.text}`);
-}
-
 (async () => {
-  // Establish baseline cursor BEFORE we broadcast, so we don't replay history.
-  const baseline = await fetchSince(0);
-  let cursor = baseline?.latestSeq ?? 0;
-
-  // Broadcast "starting" — flavour text per tool — and echo on our own terminal.
-  const startMsg = startingText();
-  console.log(`${dim}[chat]${reset} ${cyan}[me]${reset} → ${startMsg}`);
-  await broadcastA2A(startMsg, "starting");
-
-  // Poll loop — runs concurrently with the MCP call. Stops when `done` is set.
-  let done = false;
-  const poller = (async () => {
-    while (!done) {
-      const r = await fetchSince(cursor);
-      if (r) {
-        for (const m of r.messages) printRemote(m);
-        cursor = r.latestSeq;
-      }
-      await new Promise((res) => setTimeout(res, 1500));
-    }
-    // Drain a final round so we catch the receiver's "done" ping.
-    const last = await fetchSince(cursor);
-    if (last) for (const m of last.messages) printRemote(m);
-  })();
+  // Broadcast "starting" silently — the message lands on other peers'
+  // axl:start terminals via their agent.ts logs.
+  await broadcastA2A(startingText(), "starting");
 
   // Send the MCP call.
   let res: Response | null = null;
@@ -237,23 +166,15 @@ function printRemote(m: RemoteMessage) {
     networkError = err instanceof Error ? err.message : String(err);
   }
 
-  // After the MCP call returns (or fails), give the poller ~3s of grace
-  // to catch the final "done" progress ping that fires shortly after.
-  await new Promise((res) => setTimeout(res, 3000));
-  done = true;
-  await poller;
-
-  // Now print the MCP response (or the network/HTTP error).
+  // Print MCP outcome.
   if (networkError) {
-    console.error(`\n${dim}[mcp:call]${reset} network error: ${networkError}`);
+    console.error(`${dim}[mcp:call]${reset} ${red}✗${reset} network error: ${networkError}`);
     await broadcastA2A(ackText("(network error)"), "ack");
     process.exit(2);
   }
   if (!res!.ok) {
     const text = await res!.text();
-    console.error(`\n${dim}[mcp:call]${reset} HTTP ${res!.status}: ${text}`);
-    // Even on transport timeout, broadcast ack — the work likely succeeded
-    // on the receiver's side; we just lost the response channel.
+    console.error(`${dim}[mcp:call]${reset} ${red}✗${reset} HTTP ${res!.status}: ${text}`);
     await broadcastA2A(ackText(`(transport ${res!.status})`), "ack");
     process.exit(2);
   }
@@ -263,24 +184,23 @@ function printRemote(m: RemoteMessage) {
   try {
     body = JSON.parse(text);
   } catch {
-    console.error(`\n${dim}[mcp:call]${reset} non-JSON response: ${text}`);
+    console.error(`${dim}[mcp:call]${reset} ${red}✗${reset} non-JSON response: ${text}`);
     process.exit(2);
   }
 
   if (body.error) {
-    console.error(`\n${dim}[mcp:call]${reset} router error: ${body.error}`);
+    console.error(`${dim}[mcp:call]${reset} ${red}✗${reset} router error: ${body.error}`);
     await broadcastA2A(ackText("(router error)"), "ack");
     process.exit(2);
   }
 
-  // Router wraps as { response: <jsonrpc>, error: null }
   const inner = (body.response ?? body) as {
     error?: { message?: string };
     result?: { content?: Array<{ type: string; text: string }>; isError?: boolean };
   };
 
   if (inner.error) {
-    console.error(`\n${dim}[mcp:call]${reset} tool error: ${inner.error.message ?? JSON.stringify(inner.error)}`);
+    console.error(`${dim}[mcp:call]${reset} ${red}✗${reset} tool error: ${inner.error.message ?? JSON.stringify(inner.error)}`);
     await broadcastA2A(ackText("(tool error)"), "ack");
     process.exit(2);
   }
@@ -289,13 +209,16 @@ function printRemote(m: RemoteMessage) {
   if (content) {
     let parsed: unknown = content;
     try { parsed = JSON.parse(content); } catch { /* not JSON, that's fine */ }
-    console.log(`\n${dim}[mcp:call] result:${reset}`, JSON.stringify(parsed, null, 2));
-    const ack = ackText();
-    console.log(`${dim}[chat]${reset} ${cyan}[me]${reset} → ${ack}`);
-    await broadcastA2A(ack, "ack");
+    const okFlag = (parsed as { ok?: boolean })?.ok;
+    if (okFlag === false) {
+      console.log(`${dim}[mcp:call]${reset} ${red}✗ done${reset}`);
+    } else {
+      console.log(`${dim}[mcp:call]${reset} ${green}✓ done${reset}`);
+    }
+    await broadcastA2A(ackText(), "ack");
     if (inner.result?.isError) process.exit(3);
   } else {
-    console.log(`\n${dim}[mcp:call] full response:${reset}`, JSON.stringify(inner, null, 2));
+    console.log(`${dim}[mcp:call]${reset} ${green}✓ done${reset}`);
     await broadcastA2A(ackText(), "ack");
   }
 })();
