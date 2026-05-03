@@ -203,7 +203,7 @@ export default function Home() {
             </div>
           </div>
 
-          <div className="hidden lg:block">
+          <div className="hidden lg:block lg:-translate-x-24">
             <OrchestratorDiagram />
           </div>
         </div>
