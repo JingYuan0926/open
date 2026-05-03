@@ -372,9 +372,25 @@ function BoxedSlider({
         {label}
       </div>
       <div className="rounded-md border border-border bg-surface-2 px-3 py-2.5 grid gap-2">
-        <span className="text-[18px] font-mono font-semibold text-ink tabular-nums leading-none">
-          {value}
-        </span>
+        <div className="flex items-center justify-between gap-2">
+          <span className="text-[18px] font-mono font-semibold text-ink tabular-nums leading-none">
+            {value}
+          </span>
+          <div className="flex items-center gap-1">
+            <StepButton
+              symbol="−"
+              ariaLabel={`Decrease ${label}`}
+              disabled={disabled || raw <= min}
+              onClick={() => onChange(Math.max(min, raw - step))}
+            />
+            <StepButton
+              symbol="+"
+              ariaLabel={`Increase ${label}`}
+              disabled={disabled || raw >= max}
+              onClick={() => onChange(Math.min(max, raw + step))}
+            />
+          </div>
+        </div>
         <input
           type="range"
           min={min}
@@ -392,5 +408,29 @@ function BoxedSlider({
         {hint && <p className="text-[10.5px] text-ink-3 leading-tight">{hint}</p>}
       </div>
     </div>
+  );
+}
+
+function StepButton({
+  symbol,
+  ariaLabel,
+  disabled,
+  onClick,
+}: {
+  symbol: string;
+  ariaLabel: string;
+  disabled?: boolean;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      aria-label={ariaLabel}
+      disabled={disabled}
+      onClick={onClick}
+      className="w-6 h-6 grid place-items-center rounded-md border border-border bg-white text-ink-2 text-[14px] leading-none font-medium hover:bg-surface-3 hover:text-ink active:bg-surface-3 disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-white disabled:hover:text-ink-2 transition-colors"
+    >
+      {symbol}
+    </button>
   );
 }

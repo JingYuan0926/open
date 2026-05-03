@@ -14,9 +14,9 @@ export function Sidebar({ nav, currentNav, onNav, history, onNewChat, mode = "us
     <aside className="border-r border-border bg-surface-2 flex flex-col min-h-0">
       <div className="flex items-center px-4 h-[52px] border-b border-border">
         <img
-          src="/logoright.png"
+          src="/logoright123.png"
           alt="Right-Hand"
-          className="h-12 w-auto select-none"
+          className="h-20 w-auto select-none"
           draggable={false}
         />
       </div>
