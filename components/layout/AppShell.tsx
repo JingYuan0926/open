@@ -1,5 +1,5 @@
 import * as React from "react";
-import { Sidebar } from "@/components/layout/Sidebar";
+import { Sidebar, type SidebarHistoryItem } from "@/components/layout/Sidebar";
 import { TopBar } from "@/components/layout/TopBar";
 import { useRouter } from "next/router";
 import { NAV_USER, NAV_HOST, HISTORY } from "@/lib/mock-data";
@@ -17,8 +17,22 @@ const NAV_ROUTES: Record<string, string> = {
   "host-tasks": "/marketplace",
 };
 
-export function AppShell({ children, mode = "user", crumbs }: {
-  children: React.ReactNode; mode?: "user" | "host"; crumbs: string[];
+export function AppShell({
+  children,
+  mode = "user",
+  crumbs,
+  history,
+  onNewChat,
+  onPickHistory,
+  onDeleteHistory,
+}: {
+  children: React.ReactNode;
+  mode?: "user" | "host";
+  crumbs: string[];
+  history?: SidebarHistoryItem[];
+  onNewChat?: () => void;
+  onPickHistory?: (id: string) => void;
+  onDeleteHistory?: (id: string) => void;
 }) {
   const router = useRouter();
   const nav = mode === "user" ? NAV_USER : NAV_HOST;
@@ -45,8 +59,10 @@ export function AppShell({ children, mode = "user", crumbs }: {
         nav={nav}
         currentNav={currentNav}
         onNav={onNav}
-        history={HISTORY}
-        onNewChat={() => router.push("/landing")}
+        history={history ?? HISTORY}
+        onNewChat={onNewChat ?? (() => router.push("/landing"))}
+        onPickHistory={onPickHistory}
+        onDeleteHistory={onDeleteHistory}
         mode={mode}
       />
       <div className="grid grid-rows-[52px_1fr] min-w-0 min-h-0">
