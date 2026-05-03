@@ -1,10 +1,15 @@
 // Auto-generated from contracts/artifacts after Ignition deploy.
-// SPARKiNFT deployed on 0G Galileo testnet (chainId 16602).
+// RightHandAIINFT deployed on 0G Galileo testnet (chainId 16602).
 // MockVerifier: 0xa5950bba23E450F15bbf7A2Fce56b28fcBeDbB6E
+//
+// IMPORTANT: this address points at the legacy SPARKiNFT deploy. After
+// renaming the contract on-chain, run the redeploy command in CLAUDE.md
+// (Phase 2a / Redeploy procedure) and replace the address below with
+// the new RightHandAIINFT instance.
 
-export const SPARKINFT_ADDRESS = "0xe457A01ce326977Ed7A56a02a9cA8a9C4468074A" as `0x${string}`;
+export const RIGHTHAND_INFT_ADDRESS = "0xe457A01ce326977Ed7A56a02a9cA8a9C4468074A" as `0x${string}`;
 
-export const SPARKINFT_ABI = [
+export const RIGHTHAND_INFT_ABI = [
   {
     "inputs": [
       {
@@ -582,7 +587,7 @@ export const SPARKINFT_ABI = [
             "type": "uint256"
           }
         ],
-        "internalType": "struct SPARKiNFT.AgentProfile",
+        "internalType": "struct RightHandAIINFT.AgentProfile",
         "name": "",
         "type": "tuple"
       }

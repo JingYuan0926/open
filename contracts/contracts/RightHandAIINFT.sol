@@ -14,13 +14,13 @@ import {
     TransferValidityProofOutput
 } from "./interfaces/IERC7857DataVerifier.sol";
 
-/// @title SPARKiNFT — ERC-7857 Intelligent NFT for SPARK AI Agent Identity
-/// @notice Each SPARK bot mints an iNFT on registration. The iNFT carries
+/// @title RightHandAIINFT — ERC-7857 Intelligent NFT for Right-Hand AI Agent Identity
+/// @notice Each Right-Hand AI bot mints an iNFT on registration. The iNFT carries
 ///         the agent's on-chain identity, encrypted AI profile, domain expertise,
 ///         service offerings, and reputation data.
 /// @dev Non-upgradeable simplified version for hackathon demo.
 ///      Uses the real ERC-7857 interface from the 0g-agent-nft reference impl.
-contract SPARKiNFT is ERC721, Ownable {
+contract RightHandAIINFT is ERC721, Ownable {
     IERC7857DataVerifier public verifier;
     mapping(address => address) private _accessAssistants;
     mapping(uint256 => IntelligentData[]) private _iDatas;
@@ -51,7 +51,7 @@ contract SPARKiNFT is ERC721, Ownable {
 
     constructor(
         address _verifier
-    ) ERC721("SPARK iNFT Agent", "SPARK") Ownable(msg.sender) {
+    ) ERC721("Right-Hand AI Agent", "RIGHTHAND") Ownable(msg.sender) {
         verifier = IERC7857DataVerifier(_verifier);
     }
 

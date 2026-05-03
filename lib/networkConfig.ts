@@ -1,10 +1,32 @@
+import { defineChain } from 'viem';
 import { sepolia } from 'viem/chains';
 
 export const ENS_CHAIN = sepolia;
 export const ENS_CHAIN_ID = sepolia.id;
 
-// Chains exposed to RainbowKit / wagmi for the connected wallet.
-export const chains = [sepolia] as const;
+// 0G Galileo testnet — where the Right-Hand AI iNFTs live. Each agent
+// owner mints their iNFT to themselves on this chain (user-signed) before
+// the ENS subname is registered on Sepolia.
+export const ZG_GALILEO_CHAIN_ID = 16602;
+export const ZG_GALILEO = defineChain({
+    id: ZG_GALILEO_CHAIN_ID,
+    name: '0G Galileo',
+    network: '0g-galileo',
+    nativeCurrency: { name: '0G', symbol: '0G', decimals: 18 },
+    rpcUrls: {
+        default: { http: ['https://evmrpc-testnet.0g.ai'] },
+        public: { http: ['https://evmrpc-testnet.0g.ai'] },
+    },
+    blockExplorers: {
+        default: { name: 'Chainscan', url: 'https://chainscan-galileo.0g.ai' },
+    },
+    testnet: true,
+});
+
+// Chains exposed to RainbowKit / wagmi for the connected wallet. Sepolia
+// is the ENS chain; 0G Galileo is required so the wallet can sign the
+// iNFT mint with the owner's own key.
+export const chains = [sepolia, ZG_GALILEO] as const;
 
 // ENS NameWrapper on Sepolia
 export const NAME_WRAPPER_ADDRESS = '0x0635513f179D50A207757E05759CbD106d7dFcE8' as const;

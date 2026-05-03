@@ -30,7 +30,7 @@ Plus on **0G Galileo testnet (chainId 16602)**:
 
 | contract           | address (0G Galileo)                           | role                                            |
 |--------------------|------------------------------------------------|-------------------------------------------------|
-| `SPARKiNFT`        | `0xe457A01ce326977Ed7A56a02a9cA8a9C4468074A`   | ERC-721 iNFT minted before each ENS register   |
+| `RightHandAIINFT`  | `0xe457A01ce326977Ed7A56a02a9cA8a9C4468074A` *(legacy SPARKiNFT instance — pending redeploy after rename)* | ERC-721 iNFT minted before each ENS register   |
 
 The parent owner has called `NameWrapper.setApprovalForAll(SpecialistRegistrar, true)` against the v2 contract, so the registrar can mint subnames of `righthand.eth` on anyone's behalf. If you redeploy the contract you must re-run that approval (see `contracts/scripts/approve-registrar.ts`). The previous v1 deployment at `0x03e6…0B128` is still approved by the parent owner — older subnames registered through it still work, they're just not visible to v2's `getOwned` view.
 
@@ -51,8 +51,10 @@ Three flows exist, in increasing order of "how the product is meant to be used":
 
 The [`AgentBuilderForm`](components/host/AgentBuilderForm.tsx) on `/host` is the canonical "publish a new specialist" UI. It runs **a server-side iNFT mint first, then the wallet's ENS register** so the user signs only once (Sepolia):
 
-1. **Mint iNFT** (server-signed). POST `/api/0g/mint-inft` with `{ to: connectedAddress, botId: slug, domainTags: skill, serviceOfferings: desc }`. The server signs `SPARKiNFT.mintAgent(...)` on 0G Galileo with `0G_PRIVATE_KEY` and returns `{ tokenId, txHash }`. This works because `mintAgent` has no auth modifier; user pays no 0G gas and never switches chain.
-2. **Register ENS** (user signs). The form then calls `useRegisterSpecialist().register(slug, { …, tokenId, workspaceUri: inftUrl(tokenId) })` where `inftUrl(id) = "https://chainscan-galileo.0g.ai/nft/" + SPARKINFT_ADDRESS + "/" + id`. The user's wallet signs the Sepolia tx, the contract pushes into `_ownedByCaller[msg.sender]`, and `useMySpecialists` picks it up on the next read.
+1. **Mint iNFT** (user-signed on 0G Galileo). The form calls `useSwitchChain` to swap the wallet to chainId 16602, then `useWriteContract({ address: RIGHTHAND_INFT_ADDRESS, abi: RIGHTHAND_INFT_ABI, functionName: "mintAgent", args: [connectedAddress, slug, skill, desc, []] })`. The owner signs with their own key and pays 0G gas. tokenId is decoded from the `AgentMinted(tokenId, owner, botId)` event in the receipt by a `useEffect` watching `useWaitForTransactionReceipt`.
+2. **Register ENS** (user signs on Sepolia). Once the mint receipt is in and tokenId is set, a second `useEffect` calls `useRegisterSpecialist().register(slug, { …, tokenId, workspaceUri: inftUrl(tokenId) })` where `inftUrl(id) = "https://chainscan-galileo.0g.ai/nft/" + RIGHTHAND_INFT_ADDRESS + "/" + id`. The wallet auto-switches back to Sepolia, signs the register tx, and `useMySpecialists` picks it up on the next read. **Two wallet signatures total** — one on 0G, one on Sepolia.
+
+The legacy server-signed path lives at [`pages/api/0g/mint-inft.ts`](pages/api/0g/mint-inft.ts) and still works (calls `RIGHTHAND_INFT.mintAgent(to, …)` with `0G_PRIVATE_KEY`); kept around because `mintAgent` has no auth modifier so the server can mint to anyone. Use only as a fallback if a wallet refuses to add 0G Galileo.
 
 Card-header badge tracks the combined state: `Draft → Minting iNFT → Awaiting signature → Confirming → Registered` (or `Failed`). There is no `0g_token_id` input field — it is derived from the mint's receipt event.
 
@@ -79,7 +81,7 @@ contracts/
   scripts/approve-registrar.ts               # parent owner → setApprovalForAll
 lib/
   networkConfig.ts                           # chains + ENS addresses + parent domain
-  sparkinft-abi.ts                           # SPARKINFT_ADDRESS (0G Galileo) + ABI
+  righthand-inft-abi.ts                      # RIGHTHAND_INFT_ADDRESS (0G Galileo) + ABI
   abis/
     NameWrapper.ts                           # subset: setSubnodeRecord, ownerOf, isWrapped, set/isApprovedForAll
     PublicResolver.ts                        # subset: setText, text, multicall
@@ -115,7 +117,7 @@ pages/
 | `NEXT_PUBLIC_SEPOLIA_RPC_URL`         | client (wagmi)       | wallet transport / wagmi reads                           |
 | `NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID`| client               | optional; injected wallets work without it               |
 | `ENS_REGISTRAR_PRIVATE_KEY`           | server only          | required for server-mode signing; not used by wallet mode |
-| `0G_PRIVATE_KEY`                      | server only          | signs `SPARKiNFT.mintAgent` on 0G Galileo for `/api/0g/mint-inft` (and the rest of `pages/api/0g/*`). Square-bracket env access only — name starts with a digit |
+| `0G_PRIVATE_KEY`                      | server only          | legacy fallback for `/api/0g/mint-inft` + `inft-infer.ts` 0G Compute calls. Production publish path is now user-signed on the wallet, so this is only required for the fallback mint and for 0G Compute. Square-bracket env access only — name starts with a digit |
 | `SEPOLIA_RPC_URL`                     | server fallback      | used by `lib/ens-registry.ts` viem `publicClient`        |
 | `ENS_PARENT_DOMAIN`                   | server fallback      | only consulted if `NEXT_PUBLIC_ENS_PARENT_DOMAIN` unset  |
 
@@ -142,6 +144,20 @@ The contract is approved on NameWrapper by address. If you redeploy, the previou
 
 If the parent domain itself changes you also need to redeploy — `parentNode` is `immutable` in the contract.
 
+### Redeploying RightHandAIINFT on 0G Galileo
+
+After the `SPARKiNFT` → `RightHandAIINFT` rename, the on-chain class name only updates with a fresh deploy. Run from `contracts/` with `0G_PRIVATE_KEY` set in `.env` (funded on 0G Galileo testnet — faucet at `faucet.0g.ai`):
+
+```bash
+cd contracts
+./node_modules/.bin/hardhat compile
+./node_modules/.bin/hardhat ignition deploy ignition/modules/RightHandAIINFT.ts \
+  --network zgTestnet \
+  --deployment-id righthand-inft-v1
+```
+
+Then copy the deployed address from `ignition/deployments/chain-16602/deployed_addresses.json` (look for `RightHandAIINFTModule#RightHandAIINFT`) into `lib/righthand-inft-abi.ts` as `RIGHTHAND_INFT_ADDRESS`. No other approval step needed — anyone can call `mintAgent` with no auth.
+
 ## Gotchas
 
 - **Subname squat is currently possible.** `register(label, …)` does not check if `label` is already taken. Because the contract is approved on the *parent*, NameWrapper's auth check passes regardless of the subname's existing owner — a second `register("alice", …)` overwrites the original owner's record and transfers the wrapped token away. Fix is one line: `if (nameWrapper.isWrapped(subnode)) revert AlreadyRegistered();` in `register()`. Requires a redeploy + re-approval.
@@ -150,7 +166,8 @@ If the parent domain itself changes you also need to redeploy — `parentNode` i
 - **Wallet mode requires `NEXT_PUBLIC_ENS_PARENT_DOMAIN` to match the contract's `parentNode`.** They're independent values today — keep them in sync, or move to reading `parentNode` off-chain via `useReadContract` and stop relying on the env var.
 - **ENS resolution uses `ENS_CHAIN_ID` (Sepolia), not mainnet.** `useEnsName`/`useEnsAvatar` in [Navbar.tsx](components/Navbar.tsx) only resolve names registered on Sepolia ENS. Drop the `chainId` arg or add `mainnet` to `chains` if you want mainnet primary names.
 - **Per-owner discovery is on-chain in v2; cross-owner discovery still isn't.** v2 stores `mapping(address => Registration[]) _ownedByCaller` and exposes `getOwned(address)` / `ownedCount(address)` — `useMySpecialists` calls these directly, no event scan. But this is **registration history**, not live ownership: if a wrapped subname is later transferred elsewhere on NameWrapper, the registrar can't observe it and the entry stays in the list. To enumerate every specialist across every owner you still need to scan `SpecialistRegistered` logs (or use the ENS subgraph for "subdomains of righthand.eth").
-- **iNFT mint is server-signed.** `/api/0g/mint-inft` uses `0G_PRIVATE_KEY` to call `SPARKiNFT.mintAgent(to=connectedAddress, …)` on 0G Galileo, so the user signs only the Sepolia register tx — no chain switch, no 0G gas paid by the user. Works because `mintAgent` has no auth modifier; anyone can mint to any address. To make the user sign the mint themselves you'd need to add chain 16602 to wagmi's `chains` and switch via `useSwitchChain` twice.
+- **iNFT mint is now user-signed on 0G Galileo** (was server-signed). `chains` in [`lib/networkConfig.ts`](lib/networkConfig.ts) includes `[sepolia, ZG_GALILEO]` (chainId 16602) so the wallet can switch. `AgentBuilderForm` calls `useSwitchChain → useWriteContract(mintAgent) → useWaitForTransactionReceipt → useEffect(decodeEventLog "AgentMinted") → useEffect(register on Sepolia)`. Two wallet signatures total. User must hold 0G testnet gas (faucet at `faucet.0g.ai`). The old server-signed `/api/0g/mint-inft` route still exists as a fallback.
+- **Contract was renamed `SPARKiNFT` → `RightHandAIINFT`.** Sol class, ERC721 metadata (`"Right-Hand AI Agent"` / `"RIGHTHAND"`), Ignition module (`RightHandAIINFTModule`), TS ABI file (`lib/righthand-inft-abi.ts`), constants (`RIGHTHAND_INFT_ADDRESS` / `RIGHTHAND_INFT_ABI`), and all imports. The deployed address `0xe457…` is the *legacy* SPARKiNFT instance — still functional ABI-wise but the on-chain class name is the old one. Redeploy to bind a fresh address with the new name.
 - **Don't trust string-equality on addresses.** Always lower-case both sides before comparing (`a.toLowerCase() === b.toLowerCase()`); checksummed strings differ otherwise.
 
 ---
