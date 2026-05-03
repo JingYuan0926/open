@@ -267,7 +267,7 @@ function AgentListItem({
       <div className="grid grid-cols-3 gap-2 max-[480px]:grid-cols-1 mb-3">
         <Stat
           label="Price / call"
-          value={s.records.price ? `${s.records.price} 0G` : "—"}
+          value={s.records.price ? `${s.records.price} USDC` : "—"}
           copyValue={s.records.price || undefined}
         />
         <Stat
