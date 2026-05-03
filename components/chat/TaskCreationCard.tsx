@@ -151,7 +151,7 @@ export function TaskCreationCard({
     const ts = Math.floor(Date.now() / 1000) + deadlineMinutes * 60;
     let budgetWei: bigint;
     try {
-      budgetWei = parseEther(budgetEth.toString());
+      budgetWei = parseEther(totalCostEth.toString());
     } catch {
       setValidationError("Invalid budget.");
       return;
