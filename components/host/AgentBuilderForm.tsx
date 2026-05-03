@@ -15,6 +15,7 @@ import {
 import { isValidLabel } from "@/lib/ens-registry";
 import type { SpecialistRecords } from "@/lib/networkConfig";
 import { SPARKINFT_ADDRESS } from "@/lib/sparkinft-abi";
+import { SKILL_CATALOG } from "@/lib/skills";
 
 const DEFAULT_AXL_PUBKEY = "0x" + "00".repeat(32);
 const DEFAULT_VERSION = "0.1.0";
@@ -213,6 +214,36 @@ export function AgentBuilderForm() {
       </CardHeader>
       <div className="p-4 grid grid-cols-[1.4fr_1fr] gap-4 max-[1080px]:grid-cols-1">
         <div className="grid gap-3.5">
+          <div className="rounded-md border border-border bg-surface-2 p-3">
+            <div className="flex items-center gap-2 mb-2">
+              <Icon name="shield" size={13} className="text-ink-3" />
+              <span className="text-[12.5px] font-medium text-ink-2">
+                Required capabilities
+              </span>
+              <Badge variant="info">install before publishing</Badge>
+            </div>
+            <p className="text-[11.5px] text-ink-3 mb-2 leading-relaxed">
+              Your specialist&rsquo;s runtime needs every capability below
+              installed before it can answer calls. The skills/ directory ships
+              one manifest per capability.
+            </p>
+            <ul className="grid gap-1">
+              {SKILL_CATALOG.map((s) => (
+                <li
+                  key={s.id}
+                  className="grid grid-cols-[10px_1fr] gap-2 items-baseline text-[12px]"
+                >
+                  <span aria-hidden className="text-ink-4 leading-none">
+                    ·
+                  </span>
+                  <span>
+                    <span className="font-mono text-ink">{s.id}.md</span>
+                    <span className="text-ink-3"> — {s.tagline}</span>
+                  </span>
+                </li>
+              ))}
+            </ul>
+          </div>
           <Field
             label="Agent name"
             hint="Shown to users when this specialist is summoned. Slugified into the ENS label."
