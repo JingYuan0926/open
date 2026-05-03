@@ -93,7 +93,9 @@ async function broadcastA2A(text: string, kind: "starting" | "ack"): Promise<voi
     const entry = raw as PeerEntry | undefined;
     if (!entry?.pubkey) continue;
 
-    const target = `http://127.0.0.1:${apiPort}/a2a/${entry.pubkey}/`;
+    // No trailing slash — matches scripts/axl-send.ts. AXL routes the POST
+    // directly to the remote agent.ts JSON-RPC handler at /.
+    const target = `http://127.0.0.1:${apiPort}/a2a/${entry.pubkey}`;
     const body = {
       jsonrpc: "2.0",
       id: Date.now(),
@@ -109,12 +111,28 @@ async function broadcastA2A(text: string, kind: "starting" | "ack"): Promise<voi
         },
       },
     };
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), 5000);
     tasks.push(
       fetch(target, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(body),
-      }).catch(() => undefined),
+        signal: controller.signal,
+      })
+        .then((r) => {
+          clearTimeout(timer);
+          if (!r.ok) {
+            console.log(`${dim}[chat]${reset} ${magenta}✗${reset} broadcast to ${role} returned HTTP ${r.status}`);
+          } else {
+            console.log(`${dim}[chat]${reset} ${green}✓${reset} broadcast to ${role}`);
+          }
+        })
+        .catch((err) => {
+          clearTimeout(timer);
+          const msg = err instanceof Error ? err.message : String(err);
+          console.log(`${dim}[chat]${reset} ${magenta}✗${reset} broadcast to ${role} failed: ${msg}`);
+        }),
     );
   }
   await Promise.all(tasks);

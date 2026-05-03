@@ -190,7 +190,7 @@ async function broadcastChat(text: string, fromRole: string): Promise<void> {
   for (const [role, entry] of Object.entries(peers)) {
     if (role === fromRole) continue;
     if (!entry || typeof entry !== "object" || !entry.pubkey) continue;
-    const url = `http://127.0.0.1:${myPort}/a2a/${entry.pubkey}/`;
+    const url = `http://127.0.0.1:${myPort}/a2a/${entry.pubkey}`;
     const body = {
       jsonrpc: "2.0",
       id: Date.now(),
@@ -205,12 +205,23 @@ async function broadcastChat(text: string, fromRole: string): Promise<void> {
         },
       },
     };
+    const ctl = new AbortController();
+    const t = setTimeout(() => ctl.abort(), 5000);
     tasks.push(
       fetch(url, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(body),
-      }).catch(() => undefined),
+        signal: ctl.signal,
+      })
+        .then((r) => {
+          clearTimeout(t);
+          if (!r.ok) console.log(`[chat-rule] ✗ reply to ${role} returned HTTP ${r.status}`);
+        })
+        .catch((err) => {
+          clearTimeout(t);
+          console.log(`[chat-rule] ✗ reply to ${role} failed: ${err instanceof Error ? err.message : String(err)}`);
+        }),
     );
   }
   await Promise.all(tasks);
