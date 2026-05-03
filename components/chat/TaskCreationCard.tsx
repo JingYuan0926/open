@@ -210,19 +210,6 @@ export function TaskCreationCard({
       </div>
 
       <div className="p-3 grid gap-4">
-        <div>
-          <label className="block text-[11.5px] uppercase tracking-wide text-ink-3 mb-1">
-            Description
-          </label>
-          <textarea
-            value={description}
-            onChange={(e) => setDescription(e.target.value)}
-            disabled={isLocked}
-            rows={2}
-            className="w-full px-2.5 py-2 bg-white border border-border rounded-md text-[13px] text-ink resize-y min-h-[44px] focus:outline-none focus:border-accent focus:ring-2 focus:ring-accent/15 transition-colors disabled:bg-surface-2 disabled:text-ink-2"
-          />
-        </div>
-
         <div className="grid grid-cols-2 gap-2.5">
           <BoxedSlider
             label="Specialists"
