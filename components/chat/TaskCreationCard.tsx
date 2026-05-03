@@ -68,6 +68,25 @@ function fmtEth(n: number): string {
   return n.toFixed(4).replace(/\.?0+$/, "") || "0";
 }
 
+// Inline USDC mark — blue circle with a "$" inside. Recognisable without
+// bundling Circle's official SVG.
+function UsdcIcon({ size = 12 }: { size?: number }) {
+  return (
+    <span
+      aria-hidden
+      className="inline-flex items-center justify-center bg-[#2775CA] text-white rounded-full font-bold align-middle shrink-0"
+      style={{
+        width: size,
+        height: size,
+        fontSize: Math.max(8, size - 4),
+        lineHeight: 1,
+      }}
+    >
+      $
+    </span>
+  );
+}
+
 export function TaskCreationCard({
   initialDescription,
   initialSkills,
@@ -247,28 +266,28 @@ export function TaskCreationCard({
           <div className="rounded-md border border-border bg-surface-2 px-3.5 py-3 grid gap-1 text-[12.5px] text-ink-2">
             <div className="flex items-center justify-between">
               <span>Specialists × {maxSpecialists}</span>
-              <span className="font-mono tabular-nums text-ink">
-                {fmtEth(breakdown.specialistsCost)} USDC
+              <span className="inline-flex items-center gap-1 font-mono tabular-nums text-ink">
+                {fmtEth(breakdown.specialistsCost)} <UsdcIcon size={11} /> USDC
               </span>
             </div>
             {isSwarm && (
               <div className="flex items-center justify-between pl-3">
                 <span className="text-ink-3">— Swarm mode</span>
-                <span className="font-mono tabular-nums text-ink">
-                  +{fmtEth(breakdown.swarmCost)} USDC
+                <span className="inline-flex items-center gap-1 font-mono tabular-nums text-ink">
+                  +{fmtEth(breakdown.swarmCost)} <UsdcIcon size={11} /> USDC
                 </span>
               </div>
             )}
             <div className="flex items-center justify-between">
               <span>Speed boost × {speedLevel}</span>
-              <span className="font-mono tabular-nums text-ink">
-                +{fmtEth(breakdown.speedCost)} USDC
+              <span className="inline-flex items-center gap-1 font-mono tabular-nums text-ink">
+                +{fmtEth(breakdown.speedCost)} <UsdcIcon size={11} /> USDC
               </span>
             </div>
             <div className="border-t border-border mt-1.5 pt-2 flex items-center justify-between">
               <span className="text-[13px] font-medium text-ink">Total</span>
-              <span className="text-[16px] font-mono font-semibold text-ink tabular-nums">
-                {fmtEth(breakdown.total)} USDC
+              <span className="inline-flex items-center gap-1 text-[16px] font-mono font-semibold text-ink tabular-nums">
+                {fmtEth(breakdown.total)} <UsdcIcon size={13} /> USDC
               </span>
             </div>
           </div>
@@ -348,7 +367,7 @@ export function TaskCreationCard({
                 ? "Sign in wallet…"
                 : step === "confirming"
                   ? "Confirming…"
-                  : "Pay via x402"}
+                  : "Pay & Post"}
             </Button>
           )}
         </div>
