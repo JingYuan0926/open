@@ -27,6 +27,9 @@
     "demo:after": "tsx scripts/demo-after.ts",
     "demo:cli-aws": "tsx scripts/demo-cli-aws.ts",
     "demo:final": "tsx scripts/demo-final.ts",
+    "demo:aws-1": "tsx scripts/demo-aws-1.ts",
+    "demo:aws-2": "tsx scripts/demo-aws-2.ts",
+    "demo:openclaw": "tsx scripts/demo-openclaw.ts",
     "capture-urls": "tsx scripts/capture-urls.ts",
     "x402:pay": "tsx scripts/x402-pay.ts"
   },
