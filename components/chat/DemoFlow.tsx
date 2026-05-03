@@ -40,7 +40,6 @@ type Phase =
 
 const RUNNING_TIMEOUT_MS = 30_000;
 const AXL_DOWNLOAD_MS = 1800;
-const AXL_LS_KEY = "rh:axl-downloaded";
 
 // ENS lookup link — server returns JSON with all six text records + addr.
 function ensLink(name: string): string {
@@ -56,16 +55,15 @@ export function DemoFlow({ taskLabel }: { taskLabel: string }) {
   // the specialist rows. Flips to false once results land.
   const [searching, setSearching] = React.useState(true);
   const [error, setError] = React.useState<string | null>(null);
+  // Per-session only — the AXL download prompt re-plays on every page
+  // load so the demo always shows that step. Once downloaded inside one
+  // session, subsequent Start Now clicks skip the modal.
   const [axlDownloaded, setAxlDownloaded] = React.useState(false);
 
-  // Read AXL-downloaded flag once on mount (mocked, persisted in localStorage).
+  // Clear any leftover flag from previous deploys that used localStorage.
   React.useEffect(() => {
-    try {
-      const v = window.localStorage.getItem(AXL_LS_KEY);
-      if (v === "1") setAxlDownloaded(true);
-    } catch {
-      /* SSR / private mode — fine, just stays false */
-    }
+    try { window.localStorage.removeItem("rh:axl-downloaded"); }
+    catch { /* fine */ }
   }, []);
 
   // 1) Searching state for ~2s ("discovering specialists on the mesh").
@@ -98,13 +96,9 @@ export function DemoFlow({ taskLabel }: { taskLabel: string }) {
 
   const onClickDownloadAxl = () => {
     setPhase("axl-downloading");
-    // Mocked — no real download. Wait, mark flag, advance to confirm.
+    // Mocked — no real download. After progress completes, mark in-memory
+    // (no localStorage so the prompt re-plays on every page load).
     setTimeout(() => {
-      try {
-        window.localStorage.setItem(AXL_LS_KEY, "1");
-      } catch {
-        /* fine */
-      }
       setAxlDownloaded(true);
       setPhase("confirm");
     }, AXL_DOWNLOAD_MS);
