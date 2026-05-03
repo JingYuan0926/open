@@ -8,8 +8,8 @@ export default function Home() {
   const [allowed, setAllowed] = useState<boolean | null>(null);
 
   useEffect(() => {
-    const done = localStorage.getItem("rh_onboarding_complete") === "true";
-    setAllowed(done);
+    const unlocked = sessionStorage.getItem("rh_chat_unlocked") === "true";
+    setAllowed(unlocked);
   }, []);
 
   if (allowed === null) return null;
