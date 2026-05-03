@@ -139,6 +139,68 @@ function startingText(): string {
   }
 }
 
+// One-shot directive sent to the *target* role (and looped to self) right
+// before the broadcast / MCP call. This is the [me → user] line — "here's
+// what I'm asking you to do" — that frames the work the receiver is about
+// to start. Different from startingText (broadcast to everyone): this is
+// addressed to one specific role.
+function directiveText(): string {
+  switch (tool) {
+    case "aws_signin":
+      return `please open the AWS sign-in flow in your browser`;
+    case "provision_ec2":
+      return `please provision a t3.micro EC2 instance on your AWS account`;
+    case "install_openclaw":
+      return `please deploy OpenClaw onto the new EC2 box via SSH`;
+    default:
+      return `please run ${tool}`;
+  }
+}
+
+async function sendDirective(): Promise<void> {
+  if (!target?.pubkey) return;
+  const text = directiveText();
+  const peerEntries: { role: string; pubkey: string }[] = [
+    { role: targetRole, pubkey: target.pubkey },
+  ];
+  // Loop to self so it appears in our own axl:start as [me → <target>].
+  if (myEntry?.pubkey && myRole !== targetRole) {
+    peerEntries.push({ role: myRole, pubkey: myEntry.pubkey });
+  }
+  const tasks = peerEntries.map(({ role, pubkey }) => {
+    const url = `http://127.0.0.1:${apiPort}/a2a/${pubkey}`;
+    const body = {
+      jsonrpc: "2.0",
+      id: Date.now(),
+      method: "message/send",
+      params: {
+        message: {
+          kind: "message",
+          messageId: `directive-${Date.now()}-${role}`,
+          role: "user",
+          parts: [{ kind: "text", text }],
+          metadata: {
+            fromRole: myRole,
+            directed: true,
+            target: targetRole,
+            tool,
+            chat: true,
+          },
+        },
+      },
+    };
+    const ctl = new AbortController();
+    const t = setTimeout(() => ctl.abort(), 5000);
+    return fetch(url, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+      signal: ctl.signal,
+    }).catch(() => undefined).finally(() => clearTimeout(t));
+  });
+  await Promise.all(tasks);
+}
+
 function ackText(suffix = ""): string {
   const tag = suffix ? ` ${suffix}` : "";
   switch (tool) {
@@ -194,9 +256,12 @@ async function narrate(text: string): Promise<void> {
   // Local AI monologue — shows in this Mac's axl:start as [me] in purple.
   await narrate(`dispatching ${tool} call to ${targetRole} over AXL`);
 
-  // Broadcast "starting" silently — the message lands on every peer's
-  // axl:start terminal via agent.ts logs (including our own, looped
-  // back through local AXL → local agent.ts).
+  // Directed dispatch line: [me → <target>] please do X. Lands on the
+  // target's axl:start as [<sender> → me] and on our own as [me → <target>].
+  await sendDirective();
+
+  // Broadcast "starting" — lands on every peer's axl:start (including our
+  // own, looped back through local AXL → local agent.ts) as [me → all].
   await broadcastA2A(startingText(), "starting");
 
   // Send the MCP call.
