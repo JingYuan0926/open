@@ -3,7 +3,6 @@ import { Welcome } from "@/components/chat/Welcome";
 import { ChatInput } from "@/components/chat/ChatInput";
 import { TaskCreationCard, suggestSkills } from "@/components/chat/TaskCreationCard";
 import { DemoFlow } from "@/components/chat/DemoFlow";
-import { MODES } from "@/lib/mock-data";
 import type { ModeId } from "@/types";
 
 type ChatItem =
@@ -86,8 +85,6 @@ export function ChatInterface() {
       return next;
     });
   }, []);
-
-  const modeLabel = MODES.find((x) => x.id === mode)!.label;
 
   return (
     <div className="min-h-0 min-w-0">
@@ -245,24 +242,13 @@ function ThinkingIndicator({ prompt }: { prompt: string }) {
 }
 
 function AssistantWrapper({
-  modeLabel,
   children,
 }: {
-  modeLabel: string;
   children: React.ReactNode;
 }) {
   return (
-    <div className="flex gap-3.5 py-4 border-t border-border first:border-t-0">
-      <div className="w-7 h-7 rounded-md bg-accent text-accent-fg grid place-items-center text-[12px] font-medium shrink-0">
-        R
-      </div>
-      <div className="flex-1 min-w-0 pt-0.5">
-        <div className="font-medium text-[13.5px] mb-1 flex items-baseline gap-2 flex-wrap">
-          Right-Hand{" "}
-          <span className="text-[12px] text-ink-3 font-normal">{modeLabel} mode</span>
-        </div>
-        <div className="text-[14px] leading-relaxed text-ink">{children}</div>
-      </div>
+    <div className="py-4 border-t border-border first:border-t-0">
+      <div className="text-[14px] leading-relaxed text-ink">{children}</div>
     </div>
   );
 }
