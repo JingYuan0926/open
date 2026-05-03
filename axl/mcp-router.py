@@ -68,9 +68,13 @@ async def handle_route(request: web.Request) -> web.Response:
 
     logger.info(f"Routing request to {service_name} from peer {from_peer_id[:16]}...")
 
-    # Forward to the MCP server
+    # Forward to the MCP server.
+    # Note: bumped from upstream's default 30s — provision_ec2 alone takes
+    # ~60s (5s run-instances + 30s wait running + 30s wait sshd), and an
+    # install tool can take minutes. 600s gives all three demo tools head-
+    # room without pretending to support truly background work.
     try:
-        async with ClientSession(timeout=ClientTimeout(total=30)) as session:
+        async with ClientSession(timeout=ClientTimeout(total=600)) as session:
             async with session.post(
                 endpoint,
                 json=mcp_request,
