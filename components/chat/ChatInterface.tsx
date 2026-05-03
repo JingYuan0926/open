@@ -4,12 +4,14 @@ import { ChatInput } from "@/components/chat/ChatInput";
 import { TaskCreationCard, suggestSkills } from "@/components/chat/TaskCreationCard";
 import { DemoFlow } from "@/components/chat/DemoFlow";
 import type { ModeId } from "@/types";
+import type { ChatMessage } from "@/lib/chat-storage";
 
-type ChatItem =
+export type ChatItem =
   | { kind: "user"; id: string; content: string }
   | { kind: "thinking"; id: string; prompt: string; mode: ModeId }
   | { kind: "draft"; id: string; prompt: string; mode: ModeId; postedLabel?: string }
-  | { kind: "demo"; id: string; label: string };
+  | { kind: "demo"; id: string; label: string }
+  | { kind: "assistant"; id: string; content: string; stream?: boolean };
 
 const MODE_TO_MAX: Record<ModeId, number> = {
   solo: 1,
@@ -22,10 +24,86 @@ const THINKING_STEP_MS = 2000;
 const THINKING_STEPS = 3;
 const THINKING_MS = THINKING_STEP_MS * THINKING_STEPS;
 
-export function ChatInterface() {
+const PLAN_RESPONSE =
+  "Here's the plan. Tune the specialists and how fast you want it done — then invite matching specialists.";
+const POSTED_RESPONSE = (label: string) =>
+  `I've posted the task to Sepolia as ${label}. Watching for specialists to sign on…`;
+
+// Persist non-ephemeral items as ChatMessage records. Thinking items are
+// transient UI animations and never round-trip through storage.
+export function itemsToMessages(items: ChatItem[]): ChatMessage[] {
+  const now = Date.now();
+  const out: ChatMessage[] = [];
+  items.forEach((it, i) => {
+    const ts = now + i;
+    if (it.kind === "user") {
+      out.push({ role: "user", content: it.content, timestamp: ts });
+    } else if (it.kind === "demo") {
+      out.push({
+        role: "assistant",
+        content: JSON.stringify({ kind: "demo", label: it.label }),
+        timestamp: ts,
+      });
+    } else if (it.kind === "draft") {
+      out.push({
+        role: "assistant",
+        content: JSON.stringify({
+          kind: "draft",
+          prompt: it.prompt,
+          mode: it.mode,
+        }),
+        timestamp: ts,
+      });
+    } else if (it.kind === "assistant") {
+      out.push({ role: "assistant", content: it.content, timestamp: ts });
+    }
+  });
+  return out;
+}
+
+export function messagesToItems(messages: ChatMessage[]): ChatItem[] {
+  const out: ChatItem[] = [];
+  messages.forEach((m, i) => {
+    const id = `r-${m.timestamp}-${i}`;
+    if (m.role === "user") {
+      out.push({ kind: "user", id, content: m.content });
+      return;
+    }
+    if (m.role === "assistant") {
+      try {
+        const parsed = JSON.parse(m.content);
+        if (parsed?.kind === "demo" && typeof parsed.label === "string") {
+          out.push({ kind: "demo", id, label: parsed.label });
+          return;
+        }
+        if (parsed?.kind === "draft" && typeof parsed.prompt === "string") {
+          const mode: ModeId = ["solo", "pair", "swarm", "deep"].includes(
+            parsed.mode,
+          )
+            ? parsed.mode
+            : "swarm";
+          out.push({ kind: "draft", id, prompt: parsed.prompt, mode });
+          return;
+        }
+      } catch {
+        // Plain text assistant message — render as a static bubble (no streaming).
+      }
+      out.push({ kind: "assistant", id, content: m.content, stream: false });
+    }
+  });
+  return out;
+}
+
+export function ChatInterface({
+  initialItems,
+  onItemsChange,
+}: {
+  initialItems?: ChatItem[];
+  onItemsChange?: (items: ChatItem[]) => void;
+} = {}) {
   const [input, setInput] = React.useState("");
   const mode: ModeId = "swarm";
-  const [items, setItems] = React.useState<ChatItem[]>([]);
+  const [items, setItems] = React.useState<ChatItem[]>(initialItems ?? []);
   const scrollRef = React.useRef<HTMLDivElement>(null);
   const timersRef = React.useRef<Set<ReturnType<typeof setTimeout>>>(new Set());
 
@@ -41,6 +119,10 @@ export function ChatInterface() {
     };
   }, []);
 
+  React.useEffect(() => {
+    onItemsChange?.(items);
+  }, [items, onItemsChange]);
+
   const submit = (prompt: string, m: ModeId) => {
     const trimmed = prompt.trim();
     if (!trimmed) return;
@@ -53,13 +135,27 @@ export function ChatInterface() {
     ]);
     const t = setTimeout(() => {
       timersRef.current.delete(t);
-      setItems((prev) =>
-        prev.map((it) =>
-          it.id === draftId && it.kind === "thinking"
-            ? { kind: "draft", id: draftId, prompt: trimmed, mode: m }
-            : it,
-        ),
-      );
+      // Replace the thinking placeholder with the assistant's text response
+      // followed by the editable draft. Both are persisted via itemsToMessages.
+      setItems((prev) => {
+        const idx = prev.findIndex(
+          (it) => it.id === draftId && it.kind === "thinking",
+        );
+        if (idx < 0) return prev;
+        const next = [...prev];
+        next.splice(
+          idx,
+          1,
+          {
+            kind: "assistant",
+            id: `a-${stamp}`,
+            content: PLAN_RESPONSE,
+            stream: true,
+          },
+          { kind: "draft", id: draftId, prompt: trimmed, mode: m },
+        );
+        return next;
+      });
     }, THINKING_MS);
     timersRef.current.add(t);
   };
@@ -77,11 +173,17 @@ export function ChatInterface() {
       const insertAt = prev.findIndex((x) => x.id === draftId);
       if (insertAt < 0) return prev;
       const next = [...prev];
-      next.splice(insertAt + 1, 0, {
-        kind: "demo",
-        id: `demo-${draftId}`,
-        label,
-      });
+      next.splice(
+        insertAt + 1,
+        0,
+        {
+          kind: "assistant",
+          id: `a-posted-${draftId}`,
+          content: POSTED_RESPONSE(label),
+          stream: true,
+        },
+        { kind: "demo", id: `demo-${draftId}`, label },
+      );
       return next;
     });
   }, []);
@@ -106,6 +208,14 @@ export function ChatInterface() {
                   return (
                     <AssistantWrapper key={it.id}>
                       <ThinkingIndicator prompt={it.prompt} />
+                    </AssistantWrapper>
+                  );
+                if (it.kind === "assistant")
+                  return (
+                    <AssistantWrapper key={it.id}>
+                      <p className="whitespace-pre-wrap">
+                        {it.stream ? <StreamingText text={it.content} /> : it.content}
+                      </p>
                     </AssistantWrapper>
                   );
                 return (
@@ -176,9 +286,6 @@ function AssistantDraft({
 }) {
   return (
     <AssistantWrapper>
-      <p className="mb-2.5">
-        <StreamingText text="Here's the plan. Tune the specialists and how fast you want it done — then invite matching specialists." />
-      </p>
       <TaskCreationCard
         initialDescription={prompt}
         initialSkills={suggestSkills(prompt)}
