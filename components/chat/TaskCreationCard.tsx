@@ -186,12 +186,6 @@ export function TaskCreationCard({
     }
   })();
 
-  const deadlineAt = new Date(Date.now() + deadlineMinutes * 60 * 1000);
-  const deadlineLabel = deadlineAt.toLocaleTimeString([], {
-    hour: "2-digit",
-    minute: "2-digit",
-  });
-
   return (
     <div className="my-2 border border-border-strong bg-white rounded-md overflow-hidden">
       <div className="flex items-center gap-2 px-3 py-2.5 border-b border-border text-[12px] font-medium text-ink-2 uppercase tracking-wider">
