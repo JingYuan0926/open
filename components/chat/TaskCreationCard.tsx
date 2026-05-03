@@ -68,22 +68,21 @@ function fmtEth(n: number): string {
   return n.toFixed(4).replace(/\.?0+$/, "") || "0";
 }
 
-// Inline USDC mark — blue circle with a "$" inside. Recognisable without
-// bundling Circle's official SVG.
+// USDC icon — Circle's standard mark, served from streamlinehq's CDN.
+const USDC_ICON_URL =
+  "https://assets.streamlinehq.com/image/private/w_300,h_300,ar_1/f_auto/v1/icons/vectors/usdc-fpxuadmgafrjjy85bgie5.png/usdc-kksfxcrdl3f9pjx0v6jxxp.png?_a=DATAiZAAZAA0";
+
 function UsdcIcon({ size = 12 }: { size?: number }) {
   return (
-    <span
-      aria-hidden
-      className="inline-flex items-center justify-center bg-[#2775CA] text-white rounded-full font-bold align-middle shrink-0"
-      style={{
-        width: size,
-        height: size,
-        fontSize: Math.max(8, size - 4),
-        lineHeight: 1,
-      }}
-    >
-      $
-    </span>
+    <img
+      src={USDC_ICON_URL}
+      alt="USDC"
+      width={size}
+      height={size}
+      className="inline-block align-middle shrink-0 select-none"
+      loading="lazy"
+      decoding="async"
+    />
   );
 }
 
