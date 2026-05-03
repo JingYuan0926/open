@@ -155,17 +155,69 @@ const TrustLogo = ({ icon, name }: { icon: ReactNode; name: string }) => (
 
 export default function Home() {
   const router = useRouter();
+  const [modalOpen, setModalOpen] = useState(false);
+  const [step1Done, setStep1Done] = useState(false);
+  const [step2Done, setStep2Done] = useState(false);
+  const [connecting, setConnecting] = useState(false);
+  const [connectError, setConnectError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
-  async function handleGetStarted() {
+  function openModal() {
+    setModalOpen(true);
+  }
+
+  function closeModal() {
     if (busy) return;
+    setModalOpen(false);
+    setConnectError(null);
+  }
+
+  async function handleConnectWallet() {
+    if (step1Done || connecting) return;
+    setConnecting(true);
+    setConnectError(null);
+    try {
+      const eth = (typeof window !== "undefined") ? (window as unknown as { ethereum?: { request: (a: { method: string }) => Promise<string[]> } }).ethereum : undefined;
+      if (!eth) {
+        setConnectError("No wallet detected. Install MetaMask.");
+        return;
+      }
+      const accounts = await eth.request({ method: "eth_requestAccounts" });
+      if (accounts && accounts.length > 0) setStep1Done(true);
+    } catch (err) {
+      setConnectError(err instanceof Error ? err.message : "Connection failed");
+    } finally {
+      setConnecting(false);
+    }
+  }
+
+  function handleDownloadAxl() {
+    if (step2Done) return;
+    const content = `# AXL Setup\n\n1. npm install\n2. MACHINE_ROLE=user npm run axl:setup\n3. npm run axl:start\n\nSee axl/SETUP.md for full instructions.\n`;
+    const blob = new Blob([content], { type: "text/plain" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = "axl-setup.txt";
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+    setStep2Done(true);
+  }
+
+  async function handleNext() {
+    if (busy || !step1Done || !step2Done) return;
     setBusy(true);
     try {
       await fetch("/api/clicks", { method: "POST" });
     } catch {
-      // ignore — still navigate
+      // still navigate
     }
-    router.push("/landing");
+    if (typeof window !== "undefined") {
+      localStorage.setItem("rh_onboarding_complete", "true");
+    }
+    router.push("/chat");
   }
 
   return (
@@ -188,11 +240,10 @@ export default function Home() {
             </p>
             <div className="mt-8 flex flex-wrap items-center gap-3">
               <button
-                onClick={handleGetStarted}
-                disabled={busy}
-                className="inline-flex items-center gap-2 px-6 py-3 bg-accent text-accent-fg rounded-xl font-medium hover:opacity-90 disabled:opacity-50"
+                onClick={openModal}
+                className="inline-flex items-center gap-2 px-6 py-3 bg-accent text-accent-fg rounded-xl font-medium hover:opacity-90"
               >
-                {busy ? "Starting…" : "Get Started"}
+                Get Started
                 <ArrowRightIcon size={16} />
               </button>
             </div>
@@ -259,11 +310,10 @@ export default function Home() {
                 Let Right Hand AI handle the work so you can focus on what matters most.
               </p>
               <button
-                onClick={handleGetStarted}
-                disabled={busy}
-                className="inline-flex items-center gap-2 px-6 py-3 bg-accent text-accent-fg rounded-xl font-medium hover:opacity-90 disabled:opacity-50"
+                onClick={openModal}
+                className="inline-flex items-center gap-2 px-6 py-3 bg-accent text-accent-fg rounded-xl font-medium hover:opacity-90"
               >
-                {busy ? "Starting…" : "Get Started for Free"}
+                Get Started for Free
                 <ArrowRightIcon size={16} />
               </button>
             </div>
@@ -289,6 +339,87 @@ export default function Home() {
           </div>
         </div>
       </footer>
+
+      {modalOpen && (
+        <div
+          className="fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-4"
+          onClick={closeModal}
+        >
+          <div
+            className="bg-surface rounded-3xl border border-border shadow-md w-full max-w-lg p-7"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-start justify-between mb-1">
+              <h2 className="text-xl font-bold">Get Started</h2>
+              <button
+                onClick={closeModal}
+                disabled={busy}
+                className="text-ink-3 hover:text-ink p-1 -m-1 disabled:opacity-50"
+                aria-label="Close"
+              >
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M18 6 6 18M6 6l12 12" />
+                </svg>
+              </button>
+            </div>
+            <p className="text-sm text-ink-3 mb-5">Complete these 2 steps to continue.</p>
+
+            <div className={`rounded-2xl border p-4 mb-3 ${step1Done ? "border-border bg-surface-2" : "border-border bg-surface"}`}>
+              <div className="flex items-start justify-between gap-4">
+                <div className="flex items-start gap-3">
+                  <div className={`w-7 h-7 rounded-full flex items-center justify-center text-xs font-semibold flex-shrink-0 ${step1Done ? "bg-ink text-white" : "bg-surface-3 text-ink-2 border border-border"}`}>
+                    {step1Done ? <CheckIcon size={14} /> : "1"}
+                  </div>
+                  <div>
+                    <div className="font-semibold text-sm">Connect Wallet</div>
+                    <div className="text-xs text-ink-3 mt-0.5">Link your Ethereum wallet to continue.</div>
+                    {connectError && <div className="text-xs text-red-600 mt-1">{connectError}</div>}
+                  </div>
+                </div>
+                <button
+                  onClick={handleConnectWallet}
+                  disabled={step1Done || connecting}
+                  className={`flex-shrink-0 px-4 py-2 rounded-lg text-sm font-medium ${step1Done ? "bg-surface-3 text-ink-3 cursor-default" : "bg-accent text-accent-fg hover:opacity-90 disabled:opacity-50"}`}
+                >
+                  {step1Done ? "Connected" : connecting ? "Connecting…" : "Connect"}
+                </button>
+              </div>
+            </div>
+
+            <div className={`rounded-2xl border p-4 mb-6 ${step2Done ? "border-border bg-surface-2" : "border-border bg-surface"}`}>
+              <div className="flex items-start justify-between gap-4">
+                <div className="flex items-start gap-3">
+                  <div className={`w-7 h-7 rounded-full flex items-center justify-center text-xs font-semibold flex-shrink-0 ${step2Done ? "bg-ink text-white" : "bg-surface-3 text-ink-2 border border-border"}`}>
+                    {step2Done ? <CheckIcon size={14} /> : "2"}
+                  </div>
+                  <div>
+                    <div className="font-semibold text-sm">Download AXL files</div>
+                    <div className="text-xs text-ink-3 mt-0.5">Download the AXL setup file.</div>
+                  </div>
+                </div>
+                <button
+                  onClick={handleDownloadAxl}
+                  disabled={step2Done}
+                  className={`flex-shrink-0 px-4 py-2 rounded-lg text-sm font-medium ${step2Done ? "bg-surface-3 text-ink-3 cursor-default" : "bg-accent text-accent-fg hover:opacity-90 disabled:opacity-50"}`}
+                >
+                  {step2Done ? "Downloaded" : "Download"}
+                </button>
+              </div>
+            </div>
+
+            <div className="flex justify-end">
+              <button
+                onClick={handleNext}
+                disabled={!step1Done || !step2Done || busy}
+                className="inline-flex items-center gap-2 px-6 py-2.5 bg-accent text-accent-fg rounded-xl font-medium hover:opacity-90 disabled:opacity-40 disabled:cursor-not-allowed"
+              >
+                {busy ? "Continuing…" : "Next"}
+                <ArrowRightIcon size={16} />
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
