@@ -239,7 +239,7 @@ function ThinkingIndicator({ prompt }: { prompt: string }) {
         </span>
       </div>
       <p className="text-[12.5px] text-ink-3 italic leading-snug pl-[18px]">
-        {current.commentary}
+        <StreamingText key={active} text={current.commentary} speed={45} />
       </p>
     </div>
   );
