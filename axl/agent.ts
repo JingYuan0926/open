@@ -285,9 +285,11 @@ class RoleAwareExecutor implements AgentExecutor {
       console.log(`${C.dim}${ts}${C.reset} ${C.magenta}[me]${C.reset} ${input}`);
     } else {
       // Conversational line. Each role gets its own fixed colour; the
-      // local role is always rendered as "me" in magenta.
+      // local role is always rendered as "me" in magenta. Directed
+      // self-echoes ([me → <target>]) carry their target in metadata.
+      const directedTarget = typeof meta.target === "string" ? meta.target : null;
       const fromLabel = isSelf ? "me" : fromRole;
-      const toLabel = isSelf ? "all" : "me";
+      const toLabel = isSelf ? (directedTarget ?? "all") : "me";
       const fromC = colorForRole(fromRole, ROLE);
       console.log(
         `${C.dim}${ts}${C.reset} ${fromC}[${fromLabel}${ccTag} → ${toLabel}]${C.reset} ${input}`,
