@@ -143,20 +143,23 @@ async function broadcastA2A(text: string, kind: "starting" | "ack"): Promise<voi
   await Promise.all(tasks);
 }
 
-// Per-tool starting/ack flavour text. When a tool has special-case demo
-// narration (e.g. install ends with the live bot link), it goes here.
-// No role-name prefix in the body — the speaker tag is rendered per-terminal
-// as [me] for the local role and [<other>] for everyone else.
-const BOT_URL = "https://web.telegram.org/k/#@RightHandAI_NanoClawBot";
-
+// Per-tool starting/ack flavour text. The speaker tag is rendered per-
+// terminal as [me] for the local role and [<other>] for everyone else.
+// The Telegram URL no longer appears here — install_openclaw opens it on
+// @user's browser directly when the deploy succeeds.
 function startingText(): string {
   switch (tool) {
     case "aws_signin":
       return `hey @agent-c — let me handle the AWS login. while I do, can you grab the Telegram bot ID + token?`;
     case "provision_ec2":
-      return `starting EC2 provision now — t3.micro on us-east-1`;
+      // The "AWS signin done" line lives here, not at the end of signin —
+      // it's the natural beat that fires only when the human actually
+      // triggers provision (i.e. when they've finished logging in).
+      return `AWS signin done. starting EC2 provision now — t3.micro on us-east-1`;
     case "install_openclaw":
-      return `starting OpenClaw deploy onto the new EC2 box`;
+      // Handoff line lives at install start so it fires when the deploy
+      // actually kicks off, not as a fake auto-reply when provision ends.
+      return `got it — handoff received. starting OpenClaw deploy onto the new EC2 box`;
     default:
       return `starting ${tool}(${JSON.stringify(toolArgs)})`;
   }
@@ -166,11 +169,14 @@ function ackText(suffix = ""): string {
   const tag = suffix ? ` ${suffix}` : "";
   switch (tool) {
     case "aws_signin":
-      return `AWS signin done${tag}`;
+      // Quiet — the "done" announcement fires at the start of provision instead.
+      return `browser is open on @user — sign in, then run mcp:demo:provision when you're ready${tag}`;
     case "provision_ec2":
       return `EC2 ready — handing off to @agent-c for the OpenClaw deploy${tag}`;
     case "install_openclaw":
-      return `deploy complete! @user the bot is live at ${BOT_URL}${tag}`;
+      // No URL printed — install_openclaw opens the Telegram page on @user
+      // directly so the human can chat without copy-pasting a link.
+      return `deploy complete! @user the Telegram bot page should be opening now${tag}`;
     default:
       return `ack ${tool}${tag}`;
   }

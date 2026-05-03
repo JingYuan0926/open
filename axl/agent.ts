@@ -130,11 +130,9 @@ const CHAT_RULES: Record<string, ChatRule[]> = {
       delayMs: 10_000,
       reply: "hey @agent-b — got the bot token ready, waiting on you",
     },
-    {
-      kind: "ack", tool: "provision_ec2", from: ["agent-b"],
-      delayMs: 2000,
-      reply: "got it — deploying OpenClaw onto the new EC2 box now",
-    },
+    // Note: ack:provision_ec2 → "got it, deploying" intentionally removed.
+    // The "got it" handoff line is now the *first* line of install_openclaw,
+    // so it fires when the install actually starts, not as a fake auto-reply.
   ],
   "agent-b": [
     {
@@ -158,7 +156,11 @@ function findMatchingRule(
   text: string,
   meta: Record<string, unknown>,
 ): ChatRule | null {
-  if (meta.autoReply === true) return null;     // never reply to a reply
+  // Cap chain depth at 2 so reply-to-reply works (zhiwei → cedric → ack)
+  // but we can never accidentally loop forever if a future rule pair
+  // ends up self-referential.
+  const replyDepth = typeof meta.replyDepth === "number" ? meta.replyDepth : 0;
+  if (replyDepth >= 2) return null;
   const rules = CHAT_RULES[myRole];
   if (!rules || rules.length === 0) return null;
   for (const rule of rules) {

@@ -83,23 +83,35 @@ function newProgress(initial: string): ScriptProgress {
   return { status: initial, startedAt: Date.now() };
 }
 
-// Pull "step N/M: title" or arrow-prefixed status lines out of a stdout chunk.
-// Returns the latest one found, or null if there isn't one.
+// Pull human-readable status lines out of the script's stdout. Recognises:
+//   ━━ [N/M] title             → "step N/M — title"
+//   → arrow info               → bare info line
+//   ✓ check lines              → bare success line
+//   ✗ cross lines              → bare failure line
+// Anything else (blanks, decorative banners, pure CLI noise) is skipped.
 function extractLatestProgress(chunk: string): string | null {
   const lines = chunk.split("\n");
   let latest: string | null = null;
   for (const raw of lines) {
-    const line = raw.trim();
-    // ━━ [4/6] aws ec2 run-instances t3.micro
+    // Strip ANSI colours so the broadcast is readable on any terminal.
+    const line = raw.replace(/\[[0-9;]*m/g, "").trim();
+    if (!line) continue;
+
     const stepMatch = line.match(/━━\s*\[(\d+)\/(\d+)\]\s*(.+)/);
     if (stepMatch) {
       latest = `step ${stepMatch[1]}/${stepMatch[2]} — ${stepMatch[3].trim()}`;
       continue;
     }
-    // → Opening AWS landing page…
-    const arrowMatch = line.match(/^→\s*(.+)/);
-    if (arrowMatch) {
-      latest = arrowMatch[1].trim();
+    if (line.startsWith("→")) {
+      latest = line.replace(/^→\s*/, "").trim();
+      continue;
+    }
+    if (line.startsWith("✓")) {
+      latest = line.replace(/^✓\s*/, "✓ ").trim();
+      continue;
+    }
+    if (line.startsWith("✗")) {
+      latest = line.replace(/^✗\s*/, "✗ ").trim();
     }
   }
   return latest;
@@ -266,14 +278,29 @@ async function withProgress<T>(
   fn: (progress: ScriptProgress) => Promise<T>,
 ): Promise<T> {
   const progress = newProgress(`${label} starting`);
-  console.log(`[progress] tracking ${label} every ${PROGRESS_MS / 1000}s`);
+  console.log(`[progress] tracking ${label} (broadcast on every step + every ${PROGRESS_MS / 1000}s heartbeat)`);
+
+  let lastBroadcast = "";
+  let lastBroadcastAt = 0;
+
+  // Every 1s, check if the script's status has changed. If yes — fire
+  // immediately (so each step transition 1/6 → 2/6 → … reaches every peer
+  // within a second). If unchanged but >= PROGRESS_MS since last fire,
+  // send a heartbeat so the audience always has a recent line.
   const tickId = setInterval(() => {
-    const elapsed = Math.floor((Date.now() - progress.startedAt) / 1000);
+    const now = Date.now();
+    const changed = progress.status !== lastBroadcast;
+    const stale = now - lastBroadcastAt >= PROGRESS_MS;
+    if (!changed && !stale) return;
+    const elapsed = Math.floor((now - progress.startedAt) / 1000);
     const text = `${label} · ${progress.status} · ${elapsed}s elapsed`;
+    lastBroadcast = progress.status;
+    lastBroadcastAt = now;
     broadcastA2A(text).catch((e) =>
       console.log(`[progress] ping failed: ${e instanceof Error ? e.message : String(e)}`),
     );
-  }, PROGRESS_MS);
+  }, 1000);
+
   try {
     return await fn(progress);
   } finally {

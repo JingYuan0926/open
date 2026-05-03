@@ -94,16 +94,16 @@ function awsSilent(args: string): void {
   }
 
   // 1. identity
-  step(1, "aws sts get-caller-identity");
+  step(1, "verifying AWS credentials with sts get-caller-identity");
   const arn = aws(`sts get-caller-identity --query Arn --output text`);
-  ok(arn);
+  ok(`identity confirmed: ${arn}`);
 
   // visible: open EC2 dashboard so the audience sees us "land" in the console
-  info("opening EC2 dashboard in browser…");
+  info("opening EC2 console dashboard in browser");
   await openUrl(CONSOLE_URLS.home);
 
   // 2. keypair
-  step(2, `ensure keypair '${KEY_NAME}'`);
+  step(2, `preparing SSH keypair '${KEY_NAME}' for the new instance`);
   const inAws = awsMaybe(
     `ec2 describe-key-pairs --key-names ${KEY_NAME} --region ${REGION} --query 'KeyPairs[0].KeyName' --output text`,
   );
@@ -126,7 +126,7 @@ function awsSilent(args: string): void {
   }
 
   // 3. security group
-  step(3, `ensure security group '${SG_NAME}' (SSH 22 from anywhere)`);
+  step(3, `configuring security group '${SG_NAME}' to allow SSH on port 22`);
   let sgId: string;
   const existingSg = awsMaybe(
     `ec2 describe-security-groups --filters Name=group-name,Values=${SG_NAME} --region ${REGION} --query 'SecurityGroups[0].GroupId' --output text`,
@@ -146,12 +146,12 @@ function awsSilent(args: string): void {
   ok(`${sgId} ready`);
 
   // 4. AMI + run-instances
-  step(4, `aws ec2 run-instances ${INSTANCE_TYPE}`);
-  info(`resolving latest Amazon Linux 2023 AMI via SSM…`);
+  step(4, `launching ${INSTANCE_TYPE} EC2 instance with Amazon Linux 2023`);
+  info(`resolving latest Amazon Linux 2023 AMI via SSM`);
   const amiId = aws(
     `ssm get-parameter --name ${SSM_AMI_PARAM} --region ${REGION} --query Parameter.Value --output text`,
   );
-  info(`AMI: ${amiId}`);
+  info(`using AMI ${amiId}`);
   const instanceId = aws(
     [
       `ec2 run-instances`,
@@ -165,28 +165,28 @@ function awsSilent(args: string): void {
       `--output text`,
     ].join(" "),
   );
-  ok(`launched ${instanceId}`);
+  ok(`launched instance ${instanceId}`);
 
   // visible: open Launch-Instances console page so audience sees the wizard
-  info("opening Launch Instances page in browser…");
+  info("opening Launch Instances page in browser");
   await openUrl(CONSOLE_URLS.launch);
 
   // 5. wait running + grab IP
-  step(5, `aws ec2 wait instance-running ${instanceId}`);
+  step(5, `waiting for instance ${instanceId} to enter 'running' state`);
   aws(`ec2 wait instance-running --instance-ids ${instanceId} --region ${REGION}`);
   const publicIp = aws(
     `ec2 describe-instances --instance-ids ${instanceId} --region ${REGION} --query 'Reservations[0].Instances[0].PublicIpAddress' --output text`,
   );
-  ok(`running at ${publicIp}`);
+  ok(`instance is up at ${publicIp}`);
 
   // visible: open Instances list — by now the new t3.micro shows up after a refresh
-  info("opening EC2 Instances page in browser (refresh to see the new instance)…");
+  info("opening EC2 Instances page in browser — refresh to see the new instance");
   await openUrl(CONSOLE_URLS.instances);
 
   // 6. wait sshd
-  step(6, "waiting ~30s for sshd to come up");
+  step(6, "giving sshd 30 seconds to start accepting SSH connections");
   await sleep(30_000);
-  ok(`sshd should be reachable`);
+  ok(`sshd should be reachable on ${publicIp}:22`);
 
   // Persist state for demo:openclaw to consume.
   writeFileSync(
