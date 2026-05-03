@@ -26,7 +26,7 @@ function toHostedAgent(s: MySpecialist): HostedAgent {
     description: "",
     status: "online",
     skills: skillsArr.length > 0 ? skillsArr : ["unspecified"],
-    pricePerCall: s.records.price ? `${s.records.price} 0G` : "—",
+    pricePerCall: s.records.price ? `${s.records.price} USDC` : "—",
     rating: 0,
     callsToday: 0,
     successRate: 100,
