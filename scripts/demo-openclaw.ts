@@ -19,6 +19,7 @@ import { spawn, spawnSync } from "node:child_process";
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
+import { openUrl } from "../axl/mcp-servers/aws-helpers/browser";
 
 const REPO_URL = "https://github.com/derek2403/openclaw.git";
 const REPO_DIR = "openclaw";
@@ -26,6 +27,10 @@ const ENV_PATH = resolve(".env");
 const KEY_PATH = resolve("axl/openclaw-demo-key.pem");
 const STATE_PATH = join(tmpdir(), "openclaw-demo-state.json");
 const MARKER_PATH = process.env.OPENCLAW_DEMO_MARKER ?? join(tmpdir(), "openclaw-demo-done.flag");
+
+// Web Telegram URL for the deployed bot. After install completes we open
+// this on the user's Mac so they can chat immediately — no copy-paste.
+const TELEGRAM_BOT_URL = "https://web.telegram.org/k/#@RightHandAI_NanoClawBot";
 
 const cyan = "\x1b[36m";
 const yellow = "\x1b[1;33m";
@@ -211,6 +216,15 @@ echo "(For boot-survival, run 'pm2 startup' on the box and follow its sudo promp
     console.log(`\n${red}ssh exited ${r.status}${reset}`);
   } else {
     console.log(`\n${green}━━ install complete ━━${reset}`);
+
+    // Open the Telegram bot page on the local (= user's) Mac so the
+    // human can chat immediately. No CLI copy-paste needed.
+    try {
+      console.log(`${dim}Opening Telegram bot page in browser…${reset}`);
+      await openUrl(TELEGRAM_BOT_URL);
+    } catch (e) {
+      console.log(`${dim}(could not open browser: ${e instanceof Error ? e.message : String(e)} — visit ${TELEGRAM_BOT_URL} manually)${reset}`);
+    }
   }
 
   // Drop the completion marker so the chat UI's /api/demo/status can flip to "done".
