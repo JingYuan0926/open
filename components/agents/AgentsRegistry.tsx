@@ -152,7 +152,7 @@ function PayAgentControl({
           {isBusy
             ? "Paying…"
             : canPay
-              ? `Pay ${priceOG} 0G via x402`
+              ? `Pay ${priceOG} USDC via x402`
               : "No price set"}
         </Button>
         <PayBadge step={step} />
@@ -175,7 +175,7 @@ function PayAgentControl({
 
       {step === "success" && result && (
         <div className="text-[11.5px] text-ink-2 leading-relaxed">
-          Sent <span className="font-mono">{result.amount} 0G</span> to{" "}
+          Sent <span className="font-mono">{result.amount} USDC</span> to{" "}
           <span className="font-mono">{shortAddr(result.payTo)}</span>{" "}
           on {result.network}.{" "}
           <a
