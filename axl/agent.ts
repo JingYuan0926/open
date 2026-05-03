@@ -251,13 +251,16 @@ class RoleAwareExecutor implements AgentExecutor {
     });
     while (recent.length > MAX_RECENT) recent.shift();
 
-    // Pretty log line with sender attribution + timestamp.
+    // Pretty log line with sender attribution + timestamp. The local role
+    // is rendered as "me" so each terminal naturally reads from its own POV.
     const dim = "\x1b[2m";
     const yellow = "\x1b[1;33m";
     const cyan = "\x1b[36m";
     const reset = "\x1b[0m";
+    const fromLabel = fromRole === ROLE ? "me" : fromRole;
+    const toLabel = "me";
     console.log(
-      `${dim}${nowIso()}${reset} ${yellow}[${fromRole}${ccTag} → ${ROLE}]${reset} ${input}`
+      `${dim}${nowIso()}${reset} ${yellow}[${fromLabel}${ccTag} → ${toLabel}]${reset} ${input}`
     );
 
     // Demo dialogue: if a role-specific chat rule matches this inbound
