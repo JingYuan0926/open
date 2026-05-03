@@ -1,9 +1,15 @@
 import type { NextApiRequest, NextApiResponse } from "next";
+import { ethers } from "ethers";
 
-// /api/x402/pay-specialists — settles per-call royalties to each
-// specialist over the x402 protocol (USDC on Base Sepolia) and prints
-// the settlement transcript to the Next.js dev server stdout. Triggered
-// from /landing's Pay & Post button alongside the Sepolia ENS task post.
+// /api/x402/pay-specialists — settles per-call USDC royalties to each
+// specialist over the x402 protocol on Base Sepolia, then prints the
+// settlement transcript to the Next.js dev server stdout. Triggered
+// from /landing's Pay & Post button.
+//
+// Real on-chain action: USDC.transfer(payTo, amount) on Base Sepolia
+// signed by 0G_PRIVATE_KEY, one tx per specialist. Total per click =
+// 0.001 USDC × 2 specialists = 0.002 USDC. Plus the Sepolia ENS task
+// post that runs in parallel via wagmi on the user's wallet.
 
 const SPECIALISTS = [
     {
@@ -20,9 +26,17 @@ const SPECIALISTS = [
     },
 ];
 
-const USDC = "0x036CbD53842c5426634e7929541eC2318f3dCF7e";
+const BASE_SEPOLIA_RPC =
+    process.env.BASE_SEPOLIA_RPC_URL ?? "https://sepolia.base.org";
+const USDC_ADDRESS = "0x036CbD53842c5426634e7929541eC2318f3dCF7e";
+const USDC_DECIMALS = 6;
 const NETWORK = "base-sepolia (eip155:84532)";
 const SCHEME = "exact";
+
+const ERC20_ABI = [
+    "function transfer(address to, uint256 value) returns (bool)",
+    "function balanceOf(address) view returns (uint256)",
+];
 
 const BOLD = "\x1b[1m";
 const DIM = "\x1b[2m";
@@ -30,42 +44,35 @@ const CYAN = "\x1b[36m";
 const GREEN = "\x1b[32m";
 const YELLOW = "\x1b[1;33m";
 const MAGENTA = "\x1b[35m";
+const RED = "\x1b[31m";
 const RESET = "\x1b[0m";
 
 function tag(): string {
     return `${MAGENTA}[x402]${RESET}`;
 }
 
-function genTxHash(): string {
-    const bytes = "0123456789abcdef";
-    let h = "0x";
-    for (let i = 0; i < 64; i++) h += bytes[Math.floor(Math.random() * 16)];
-    return h;
-}
-
-function genBlockNumber(): number {
-    return 41020000 + Math.floor(Math.random() * 5000);
-}
-
 function sleep(ms: number): Promise<void> {
     return new Promise((r) => setTimeout(r, ms));
 }
 
-async function logBanner() {
+function logBanner(payerAddr: string) {
     console.log(``);
     console.log(`${tag()} ${BOLD}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${RESET}`);
     console.log(`${tag()} ${BOLD}  per-call royalty payment for ${SPECIALISTS.length} specialists${RESET}`);
     console.log(`${tag()}   network: ${CYAN}${NETWORK}${RESET}`);
-    console.log(`${tag()}   asset:   ${CYAN}USDC${RESET} ${DIM}(${USDC})${RESET}`);
+    console.log(`${tag()}   asset:   ${CYAN}USDC${RESET} ${DIM}(${USDC_ADDRESS})${RESET}`);
     console.log(`${tag()}   scheme:  ${CYAN}${SCHEME}${RESET}`);
+    console.log(`${tag()}   payer:   ${CYAN}${payerAddr}${RESET}`);
     console.log(`${tag()} ${BOLD}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${RESET}`);
 }
 
-async function logSettlement(idx: number, total: number) {
+async function settleOne(
+    signer: ethers.Wallet,
+    idx: number,
+    total: number,
+): Promise<{ ok: true; txHash: string; block: number } | { ok: false; error: string }> {
     const s = SPECIALISTS[idx];
-    const tx = genTxHash();
-    const block = genBlockNumber();
-    const amountAtomic = "1000"; // 0.001 USDC, 6 decimals
+    const amountAtomic = ethers.parseUnits(s.amount, USDC_DECIMALS).toString();
 
     console.log(``);
     console.log(`${tag()} ${YELLOW}[${idx + 1}/${total}]${RESET} ${BOLD}${s.name}${RESET}`);
@@ -79,12 +86,26 @@ async function logSettlement(idx: number, total: number) {
     await sleep(180);
     console.log(`${tag()}   ${DIM}→${RESET} POST /api/x402/pay-agent ${DIM}(with X-PAYMENT header)${RESET}`);
     await sleep(160);
-    console.log(`${tag()}   ${DIM}…${RESET} facilitator: USDC.transferWithAuthorization(...)`);
-    await sleep(220);
-    console.log(`${tag()}   ${GREEN}✓${RESET} settled tx ${CYAN}${tx}${RESET}`);
-    console.log(`${tag()}     block:    ${block}`);
-    console.log(`${tag()}     amount:   ${s.amount} USDC`);
-    console.log(`${tag()}     explorer: ${DIM}https://sepolia.basescan.org/tx/${tx}${RESET}`);
+    console.log(`${tag()}   ${DIM}…${RESET} facilitator: USDC.transfer(${s.payTo}, ${amountAtomic})`);
+
+    try {
+        const usdc = new ethers.Contract(USDC_ADDRESS, ERC20_ABI, signer);
+        const tx = await usdc.transfer(s.payTo, BigInt(amountAtomic));
+        const receipt = await tx.wait();
+        if (!receipt) {
+            console.log(`${tag()}   ${RED}✗${RESET} no receipt from Base Sepolia RPC`);
+            return { ok: false, error: "no receipt" };
+        }
+        console.log(`${tag()}   ${GREEN}✓${RESET} settled tx ${CYAN}${tx.hash}${RESET}`);
+        console.log(`${tag()}     block:    ${receipt.blockNumber}`);
+        console.log(`${tag()}     amount:   ${s.amount} USDC`);
+        console.log(`${tag()}     explorer: ${DIM}https://sepolia.basescan.org/tx/${tx.hash}${RESET}`);
+        return { ok: true, txHash: tx.hash, block: receipt.blockNumber };
+    } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err);
+        console.log(`${tag()}   ${RED}✗${RESET} settlement failed: ${msg}`);
+        return { ok: false, error: msg };
+    }
 }
 
 export default async function handler(
@@ -96,27 +117,41 @@ export default async function handler(
         return res.status(405).json({ error: "POST only" });
     }
 
-    // Run the print sequence asynchronously; respond immediately so the
-    // browser doesn't wait for the animation. The user only cares that
-    // the lines appear in the dev terminal.
-    (async () => {
-        await logBanner();
-        for (let i = 0; i < SPECIALISTS.length; i++) {
-            await logSettlement(i, SPECIALISTS.length);
-        }
-        console.log(``);
-        console.log(
-            `${tag()} ${BOLD}${GREEN}━━ all royalties settled · ${SPECIALISTS.reduce((a, s) => a + Number(s.amount), 0).toFixed(3)} USDC total ━━${RESET}`,
-        );
-        console.log(``);
-    })().catch((err) => {
-        console.error(`${tag()} ${err instanceof Error ? err.message : String(err)}`);
-    });
+    const privateKey = process.env["0G_PRIVATE_KEY"];
+    if (!privateKey || privateKey === "YOUR_PRIVATE_KEY_HERE") {
+        return res
+            .status(500)
+            .json({ error: "0G_PRIVATE_KEY not configured in .env" });
+    }
 
-    return res.status(200).json({
+    const provider = new ethers.JsonRpcProvider(BASE_SEPOLIA_RPC);
+    const signer = new ethers.Wallet(privateKey, provider);
+
+    // Respond fast — keep the settlement loop running on the server in the
+    // background. The browser only cares that the dev terminal scrolls.
+    res.status(200).json({
         ok: true,
         specialists: SPECIALISTS.length,
         message: "x402 settlement transcript printing to server stdout",
     });
-}
 
+    (async () => {
+        logBanner(signer.address);
+        const results: Array<{ ok: boolean; txHash?: string }> = [];
+        for (let i = 0; i < SPECIALISTS.length; i++) {
+            const r = await settleOne(signer, i, SPECIALISTS.length);
+            results.push(r);
+        }
+        const settled = results.filter((r) => r.ok).length;
+        const total = SPECIALISTS.reduce((a, s) => a + Number(s.amount), 0).toFixed(3);
+        console.log(``);
+        if (settled === SPECIALISTS.length) {
+            console.log(`${tag()} ${BOLD}${GREEN}━━ all royalties settled · ${total} USDC total ━━${RESET}`);
+        } else {
+            console.log(`${tag()} ${BOLD}${YELLOW}━━ ${settled}/${SPECIALISTS.length} royalties settled (${total} USDC attempted) ━━${RESET}`);
+        }
+        console.log(``);
+    })().catch((err) => {
+        console.error(`${tag()} ${err instanceof Error ? err.message : String(err)}`);
+    });
+}
