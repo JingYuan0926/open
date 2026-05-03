@@ -102,14 +102,52 @@ function OrchestratorDiagram() {
         overflow="visible"
         aria-hidden
       >
-        <g stroke="#9CA3AF" strokeWidth="0.3" strokeDasharray="0.7 0.7" fill="none">
-          <line x1="50" y1="50" x2="50" y2="16" className="flow-inward" />
-          <line x1="50" y1="50" x2="20" y2="38" className="flow-inward" />
-          <line x1="50" y1="50" x2="80" y2="38" className="flow-inward" />
-          <line x1="50" y1="50" x2="20" y2="62" className="flow-inward" />
-          <line x1="50" y1="50" x2="80" y2="62" className="flow-inward" />
-          <line x1="50" y1="50" x2="50" y2="84" className="flow-inward" />
-          <line x1="50" y1="50" x2="113" y2="50" className="flow-outward" />
+        <defs>
+          <filter id="blueGlow" x="-200%" y="-200%" width="500%" height="500%">
+            <feGaussianBlur stdDeviation="0.9" result="blur" />
+            <feMerge>
+              <feMergeNode in="blur" />
+              <feMergeNode in="SourceGraphic" />
+            </feMerge>
+          </filter>
+        </defs>
+
+        <g stroke="#CBD5E1" strokeWidth="0.3" strokeDasharray="0.7 0.7" fill="none">
+          <line x1="50" y1="50" x2="50" y2="16" />
+          <line x1="50" y1="50" x2="20" y2="38" />
+          <line x1="50" y1="50" x2="80" y2="38" />
+          <line x1="50" y1="50" x2="20" y2="62" />
+          <line x1="50" y1="50" x2="80" y2="62" />
+          <line x1="50" y1="50" x2="50" y2="84" />
+          <line x1="50" y1="50" x2="113" y2="50" />
+        </g>
+
+        <g fill="#60A5FA" filter="url(#blueGlow)">
+          <circle r="0.9" cx="50" cy="16">
+            <animate attributeName="cy" values="16;50" dur="1.5s" begin="0s" repeatCount="indefinite" />
+          </circle>
+          <circle r="0.9" cx="20" cy="38">
+            <animate attributeName="cx" values="20;50" dur="1.5s" begin="-0.25s" repeatCount="indefinite" />
+            <animate attributeName="cy" values="38;50" dur="1.5s" begin="-0.25s" repeatCount="indefinite" />
+          </circle>
+          <circle r="0.9" cx="80" cy="38">
+            <animate attributeName="cx" values="80;50" dur="1.5s" begin="-0.5s" repeatCount="indefinite" />
+            <animate attributeName="cy" values="38;50" dur="1.5s" begin="-0.5s" repeatCount="indefinite" />
+          </circle>
+          <circle r="0.9" cx="20" cy="62">
+            <animate attributeName="cx" values="20;50" dur="1.5s" begin="-0.75s" repeatCount="indefinite" />
+            <animate attributeName="cy" values="62;50" dur="1.5s" begin="-0.75s" repeatCount="indefinite" />
+          </circle>
+          <circle r="0.9" cx="80" cy="62">
+            <animate attributeName="cx" values="80;50" dur="1.5s" begin="-1s" repeatCount="indefinite" />
+            <animate attributeName="cy" values="62;50" dur="1.5s" begin="-1s" repeatCount="indefinite" />
+          </circle>
+          <circle r="0.9" cx="50" cy="84">
+            <animate attributeName="cy" values="84;50" dur="1.5s" begin="-1.25s" repeatCount="indefinite" />
+          </circle>
+          <circle r="0.9" cx="50" cy="50">
+            <animate attributeName="cx" values="50;113" dur="1.5s" begin="0s" repeatCount="indefinite" />
+          </circle>
         </g>
       </svg>
 
