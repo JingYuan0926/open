@@ -30,84 +30,55 @@ const STEPS = [
 ];
 
 type Phase =
-  | "introducing" // animating specialists signing on
-  | "ready" // both signed on, waiting for user to confirm
-  | "confirm" // confirm modal open
-  | "running" // demo:final spawned, polling for completion
-  | "done"; // celebration modal open
+  | "introducing"      // searching loading + reveal animation
+  | "ready"            // both accepted, waiting for user
+  | "confirm"          // review steps before kicking off execution
+  | "running"          // demo executing
+  | "done";
 
-const POLL_INTERVAL_MS = 5_000;
-const TIMEOUT_MS = 6 * 60 * 1000; // 6 minutes — fallback if marker never appears
+const RUNNING_TIMEOUT_MS = 30_000;
+
+// ENS lookup link — server returns JSON with all six text records + addr.
+function ensLink(name: string): string {
+  return `/api/ens/read-specialist?name=${encodeURIComponent(name)}`;
+}
 
 export function DemoFlow({ taskLabel }: { taskLabel: string }) {
+  const taskEns = `${taskLabel}.righthand.eth`;
+
   const [phase, setPhase] = React.useState<Phase>("introducing");
   const [signedOn, setSignedOn] = React.useState<typeof SPECIALISTS>([]);
+  // While true, show a loading "discovering on the mesh" pane instead of
+  // the specialist rows. Flips to false once results land.
+  const [searching, setSearching] = React.useState(true);
   const [error, setError] = React.useState<string | null>(null);
-  const [busy, setBusy] = React.useState(false);
-  const [elapsed, setElapsed] = React.useState(0);
-
-  // Animate specialists signing on.
+  // 1) Searching state for ~2s ("discovering specialists on the mesh").
+  // 2) Reveal specialists one-by-one as they "accept".
+  // 3) Flip to ready.
   React.useEffect(() => {
     const timers: ReturnType<typeof setTimeout>[] = [];
-    timers.push(setTimeout(() => setSignedOn([SPECIALISTS[0]]), 700));
-    timers.push(setTimeout(() => setSignedOn(SPECIALISTS), 1600));
-    timers.push(setTimeout(() => setPhase("ready"), 2000));
+    timers.push(setTimeout(() => setSearching(false), 2200));
+    timers.push(setTimeout(() => setSignedOn([SPECIALISTS[0]]), 2900));
+    timers.push(setTimeout(() => setSignedOn(SPECIALISTS), 3800));
+    timers.push(setTimeout(() => setPhase("ready"), 4200));
     return () => timers.forEach(clearTimeout);
   }, []);
 
-  // Once running, poll /api/demo/status until done (or timeout).
+  // Auto-finish after 30 s once running.
   React.useEffect(() => {
     if (phase !== "running") return;
-    const startedAt = Date.now();
-    let cancelled = false;
-
-    const tick = () => setElapsed(Math.floor((Date.now() - startedAt) / 1000));
-    const tickInterval = setInterval(tick, 1000);
-
-    const poll = async () => {
-      while (!cancelled) {
-        if (Date.now() - startedAt >= TIMEOUT_MS) {
-          if (!cancelled) setPhase("done");
-          return;
-        }
-        try {
-          const r = await fetch("/api/demo/status");
-          if (r.ok) {
-            const body = await r.json();
-            if (body.done) {
-              if (!cancelled) setPhase("done");
-              return;
-            }
-          }
-        } catch {
-          // ignore — retry next tick
-        }
-        await new Promise((res) => setTimeout(res, POLL_INTERVAL_MS));
-      }
-    };
-    poll();
-
-    return () => {
-      cancelled = true;
-      clearInterval(tickInterval);
-    };
+    const t = setTimeout(() => setPhase("done"), RUNNING_TIMEOUT_MS);
+    return () => clearTimeout(t);
   }, [phase]);
 
-  const start = async () => {
+  const onClickStartNow = () => {
     setError(null);
-    setBusy(true);
-    try {
-      const r = await fetch("/api/demo/start", { method: "POST" });
-      if (!r.ok) {
-        const body = await r.json().catch(() => ({}));
-        throw new Error(body.error ?? `HTTP ${r.status}`);
-      }
-      setPhase("running");
-    } catch (e) {
-      setError(e instanceof Error ? e.message : "Failed to start demo");
-    } finally {
-      setBusy(false);
-    }
+    setPhase("confirm");
+  };
+
+  const onClickStartExecution = () => {
+    setError(null);
+    setPhase("running");
   };
 
   return (
@@ -115,42 +86,86 @@ export function DemoFlow({ taskLabel }: { taskLabel: string }) {
       <div className="my-2 border border-border-strong bg-white rounded-md overflow-hidden">
         <div className="flex items-center gap-2 px-3 py-2.5 border-b border-border text-[12px] font-medium text-ink-2 uppercase tracking-wider">
           <Icon name="users" size={14} />
-          Specialists signed on
+          Specialists accepted
           <span className="ml-auto text-[11px] font-medium text-ink-3 normal-case tracking-normal">
-            for {taskLabel}.righthand.eth
+            for{" "}
+            <a
+              href={ensLink(taskEns)}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="font-mono text-blue-700 hover:underline"
+              title="Show ENS records"
+            >
+              {taskEns}
+            </a>
           </span>
         </div>
         <div className="p-3 grid gap-2">
-          {SPECIALISTS.map((s) => {
-            const isSignedOn = signedOn.some((x) => x.id === s.id);
-            return (
-              <div
-                key={s.id}
-                className={`flex items-center gap-2.5 px-2.5 py-2 rounded-md border transition-colors ${
-                  isSignedOn ? "border-emerald-200 bg-emerald-50" : "border-border bg-surface-2"
-                }`}
-              >
+          {searching ? (
+            <div className="grid gap-2">
+              <div className="flex items-center gap-2.5 px-2.5 py-2 rounded-md border border-border bg-surface-2">
+                <span className="w-2 h-2 rounded-full bg-amber-500 pulse-dot shrink-0" />
+                <div className="flex-1 text-[12.5px] text-ink-2">
+                  Discovering matching specialists on the AXL mesh…
+                </div>
+                <span className="text-[11px] text-ink-4 font-mono">querying ENS</span>
+              </div>
+              {/* Skeleton placeholder rows so the box height doesn't jump
+                  when the real specialists land. */}
+              {[0, 1].map((i) => (
                 <div
-                  className={`w-7 h-7 rounded-md grid place-items-center font-mono text-[11.5px] font-semibold ${
-                    isSignedOn ? "bg-emerald-500 text-white" : "bg-surface-3 text-ink-4"
+                  key={i}
+                  className="flex items-center gap-2.5 px-2.5 py-2 rounded-md border border-dashed border-border bg-surface-2/50"
+                >
+                  <div className="w-7 h-7 rounded-md bg-surface-3 animate-pulse shrink-0" />
+                  <div className="flex-1 grid gap-1">
+                    <div className="h-3 rounded bg-surface-3 animate-pulse w-2/3" />
+                    <div className="h-2.5 rounded bg-surface-3 animate-pulse w-1/2" />
+                  </div>
+                  <span className="text-[11px] text-ink-4 italic shrink-0">searching…</span>
+                </div>
+              ))}
+            </div>
+          ) : (
+            SPECIALISTS.map((s) => {
+              const isSignedOn = signedOn.some((x) => x.id === s.id);
+              return (
+                <div
+                  key={s.id}
+                  className={`flex items-center gap-2.5 px-2.5 py-2 rounded-md border transition-colors ${
+                    isSignedOn ? "border-emerald-200 bg-emerald-50" : "border-border bg-surface-2"
                   }`}
                 >
-                  {s.id}
+                  <div
+                    className={`w-7 h-7 rounded-md grid place-items-center font-mono text-[11.5px] font-semibold ${
+                      isSignedOn ? "bg-emerald-500 text-white" : "bg-surface-3 text-ink-4"
+                    }`}
+                  >
+                    {s.id}
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <div className="text-[13px] font-medium">{s.name}</div>
+                    <a
+                      href={ensLink(s.ens)}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="text-[11.5px] text-blue-700 font-mono truncate hover:underline block"
+                      title="Show ENS records"
+                    >
+                      {s.ens}
+                    </a>
+                  </div>
+                  {isSignedOn ? (
+                    <Badge variant="success" dot>
+                      accepted task
+                    </Badge>
+                  ) : (
+                    <span className="text-[11.5px] text-ink-4 italic">candidate found</span>
+                  )}
                 </div>
-                <div className="flex-1 min-w-0">
-                  <div className="text-[13px] font-medium">{s.name}</div>
-                  <div className="text-[11.5px] text-ink-3 font-mono truncate">{s.ens}</div>
-                </div>
-                {isSignedOn ? (
-                  <Badge variant="success" dot>
-                    signed on
-                  </Badge>
-                ) : (
-                  <span className="text-[11.5px] text-ink-4 italic">discovering…</span>
-                )}
-              </div>
-            );
-          })}
+              );
+            })
+          )}
         </div>
         {phase === "ready" && (
           <div className="p-3 border-t border-border bg-surface-2 flex items-center gap-2">
@@ -158,35 +173,33 @@ export function DemoFlow({ taskLabel }: { taskLabel: string }) {
             <span className="flex-1 text-[12.5px] text-ink-2">
               Both specialists matched. Ready to begin execution.
             </span>
-            <Button variant="primary" icon="play" onClick={() => setPhase("confirm")}>
-              Start demo
+            <Button variant="primary" icon="play" onClick={onClickStartNow}>
+              Start Now
             </Button>
           </div>
         )}
         {phase === "running" && (
-          <div className="p-3 border-t border-border bg-surface-2 grid gap-2">
-            <div className="flex items-center gap-2 text-[12.5px] text-ink-2">
-              <span className="w-1.5 h-1.5 rounded-full bg-amber-500 pulse-dot" />
-              <span className="flex-1">
-                Demo running — sign in to AWS in Chrome, then watch the popup terminal.
-              </span>
-              <span className="text-[11px] font-mono text-ink-3 tabular-nums">
-                {Math.floor(elapsed / 60)}:{String(elapsed % 60).padStart(2, "0")}
-              </span>
-            </div>
-            <div className="text-[11.5px] text-ink-3">
-              No clicks needed — we&rsquo;ll let you know when the EC2 instance is provisioned and OpenClaw is installed.
-            </div>
-          </div>
-        )}
-        {phase === "done" && (
           <div className="p-3 border-t border-border bg-surface-2 flex items-center gap-2">
-            <Icon name="check" size={14} className="text-emerald-500" />
-            <span className="text-[12.5px] text-ink-2">Demo complete.</span>
+            <span className="w-1.5 h-1.5 rounded-full bg-amber-500 pulse-dot" />
+            <span className="text-[12.5px] text-ink-2">AI agents are taking over the process…</span>
           </div>
         )}
       </div>
 
+      {phase === "done" && (
+        <div className="my-2 border border-border-strong bg-white rounded-md overflow-hidden">
+          <div className="flex items-center gap-2 px-3 py-2.5 border-b border-border text-[12px] font-medium text-ink-2 uppercase tracking-wider">
+            <Icon name="check" size={14} className="text-emerald-500" />
+            Finished
+          </div>
+          <div className="p-3 text-[13.5px] text-ink-2 leading-relaxed">
+            The process is done. Let me know if there&rsquo;s anything else I can help with.
+          </div>
+        </div>
+      )}
+
+      {/* Confirm — review steps and start. No payment here; budget was
+          already escrowed on Sepolia by Pay & Post. */}
       <Modal open={phase === "confirm"} onClose={() => setPhase("ready")}>
         <div className="grid gap-3.5">
           <div className="flex items-center gap-2">
@@ -194,9 +207,8 @@ export function DemoFlow({ taskLabel }: { taskLabel: string }) {
             <h3 className="text-[15px] font-semibold">Confirm execution</h3>
           </div>
           <p className="text-[13px] text-ink-2">
-            Both specialists will run the following on your machine and in your AWS account. Sign
-            in to AWS in your browser when the page opens — no other clicks needed; we&rsquo;ll
-            tell you when it&rsquo;s done.
+            Both specialists will run the following on your machine and in your AWS account.
+            Sign in to AWS in your browser when the page opens — no other clicks needed.
           </p>
           <ol className="grid gap-1.5">
             {STEPS.map((s, i) => (
@@ -209,50 +221,37 @@ export function DemoFlow({ taskLabel }: { taskLabel: string }) {
             ))}
           </ol>
           <div className="text-[11.5px] text-ink-3 bg-amber-50 border border-amber-200 px-3 py-2 rounded">
-            This will provision real resources in your AWS account. The instance is left running
-            unless you set <span className="font-mono">TERMINATE=1</span>.
+            This will provision real resources in your AWS account. The instance
+            is left running unless you set <span className="font-mono">TERMINATE=1</span>.
           </div>
           {error && (
-            <div className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-[12px] text-red-800">
+            <div className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-[12px] text-red-800 break-words">
               {error}
             </div>
           )}
           <div className="flex justify-end pt-1">
-            <Button variant="primary" icon="play" onClick={start} disabled={busy}>
-              {busy ? "Starting…" : "Start"}
+            <Button variant="primary" icon="play" onClick={onClickStartExecution}>
+              Start
             </Button>
           </div>
         </div>
       </Modal>
 
-      <Modal open={phase === "done"} onClose={() => setPhase("done")}>
+      {/* Running */}
+      <Modal open={phase === "running"}>
         <div className="grid gap-3.5">
           <div className="flex items-center gap-2">
-            <Icon name="check" size={18} className="text-emerald-500" />
-            <h3 className="text-[15px] font-semibold">Demo complete</h3>
+            <span className="w-2 h-2 rounded-full bg-amber-500 pulse-dot" />
+            <h3 className="text-[15px] font-semibold">AI agents are taking over</h3>
           </div>
           <p className="text-[13px] text-ink-2">
-            Your EC2 instance is running, OpenClaw is installed, and the bot should be online.
-            Open Telegram and message{" "}
-            <a
-              href="https://t.me/RightHandAI_OpenClaw"
-              target="_blank"
-              rel="noopener noreferrer"
-              className="font-mono text-blue-700 underline"
-            >
-              @RightHandAI_OpenClaw
-            </a>{" "}
-            to chat with it.
+            The specialists are provisioning your EC2 instance and installing OpenClaw on it now.
+            Please be patient — no clicks needed here. We&rsquo;ll tell you when it&rsquo;s done.
           </p>
-          <div className="text-[11.5px] text-ink-3 bg-surface-2 border border-border px-3 py-2 rounded">
-            Don&rsquo;t forget to terminate the instance when done:{" "}
-            <span className="font-mono">aws ec2 terminate-instances --instance-ids i-...</span>
-          </div>
-          <div className="flex justify-end pt-1">
-            <Button variant="primary" onClick={() => setPhase("done")}>
-              Got it
-            </Button>
-          </div>
+          <p className="text-[12.5px] text-ink-3">
+            A Chrome tab opened to the AWS sign-in page; sign in there at your own pace. The
+            agents are working in parallel in a separate terminal window.
+          </p>
         </div>
       </Modal>
     </>

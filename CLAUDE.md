@@ -30,7 +30,7 @@ Plus on **0G Galileo testnet (chainId 16602)**:
 
 | contract           | address (0G Galileo)                           | role                                            |
 |--------------------|------------------------------------------------|-------------------------------------------------|
-| `SPARKiNFT`        | `0xe457A01ce326977Ed7A56a02a9cA8a9C4468074A`   | ERC-721 iNFT minted before each ENS register   |
+| `RightHandAIINFT`  | `0xe457A01ce326977Ed7A56a02a9cA8a9C4468074A` *(legacy SPARKiNFT instance — pending redeploy after rename)* | ERC-721 iNFT minted before each ENS register   |
 
 The parent owner has called `NameWrapper.setApprovalForAll(SpecialistRegistrar, true)` against the v2 contract, so the registrar can mint subnames of `righthand.eth` on anyone's behalf. If you redeploy the contract you must re-run that approval (see `contracts/scripts/approve-registrar.ts`). The previous v1 deployment at `0x03e6…0B128` is still approved by the parent owner — older subnames registered through it still work, they're just not visible to v2's `getOwned` view.
 
@@ -51,8 +51,10 @@ Three flows exist, in increasing order of "how the product is meant to be used":
 
 The [`AgentBuilderForm`](components/host/AgentBuilderForm.tsx) on `/host` is the canonical "publish a new specialist" UI. It runs **a server-side iNFT mint first, then the wallet's ENS register** so the user signs only once (Sepolia):
 
-1. **Mint iNFT** (server-signed). POST `/api/0g/mint-inft` with `{ to: connectedAddress, botId: slug, domainTags: skill, serviceOfferings: desc }`. The server signs `SPARKiNFT.mintAgent(...)` on 0G Galileo with `0G_PRIVATE_KEY` and returns `{ tokenId, txHash }`. This works because `mintAgent` has no auth modifier; user pays no 0G gas and never switches chain.
-2. **Register ENS** (user signs). The form then calls `useRegisterSpecialist().register(slug, { …, tokenId, workspaceUri: inftUrl(tokenId) })` where `inftUrl(id) = "https://chainscan-galileo.0g.ai/nft/" + SPARKINFT_ADDRESS + "/" + id`. The user's wallet signs the Sepolia tx, the contract pushes into `_ownedByCaller[msg.sender]`, and `useMySpecialists` picks it up on the next read.
+1. **Mint iNFT** (user-signed on 0G Galileo). The form calls `useSwitchChain` to swap the wallet to chainId 16602, then `useWriteContract({ address: RIGHTHAND_INFT_ADDRESS, abi: RIGHTHAND_INFT_ABI, functionName: "mintAgent", args: [connectedAddress, slug, skill, desc, []] })`. The owner signs with their own key and pays 0G gas. tokenId is decoded from the `AgentMinted(tokenId, owner, botId)` event in the receipt by a `useEffect` watching `useWaitForTransactionReceipt`.
+2. **Register ENS** (user signs on Sepolia). Once the mint receipt is in and tokenId is set, a second `useEffect` calls `useRegisterSpecialist().register(slug, { …, tokenId, workspaceUri: inftUrl(tokenId) })` where `inftUrl(id) = "https://chainscan-galileo.0g.ai/nft/" + RIGHTHAND_INFT_ADDRESS + "/" + id`. The wallet auto-switches back to Sepolia, signs the register tx, and `useMySpecialists` picks it up on the next read. **Two wallet signatures total** — one on 0G, one on Sepolia.
+
+The legacy server-signed path lives at [`pages/api/0g/mint-inft.ts`](pages/api/0g/mint-inft.ts) and still works (calls `RIGHTHAND_INFT.mintAgent(to, …)` with `0G_PRIVATE_KEY`); kept around because `mintAgent` has no auth modifier so the server can mint to anyone. Use only as a fallback if a wallet refuses to add 0G Galileo.
 
 Card-header badge tracks the combined state: `Draft → Minting iNFT → Awaiting signature → Confirming → Registered` (or `Failed`). There is no `0g_token_id` input field — it is derived from the mint's receipt event.
 
@@ -79,7 +81,7 @@ contracts/
   scripts/approve-registrar.ts               # parent owner → setApprovalForAll
 lib/
   networkConfig.ts                           # chains + ENS addresses + parent domain
-  sparkinft-abi.ts                           # SPARKINFT_ADDRESS (0G Galileo) + ABI
+  righthand-inft-abi.ts                      # RIGHTHAND_INFT_ADDRESS (0G Galileo) + ABI
   abis/
     NameWrapper.ts                           # subset: setSubnodeRecord, ownerOf, isWrapped, set/isApprovedForAll
     PublicResolver.ts                        # subset: setText, text, multicall
@@ -115,7 +117,7 @@ pages/
 | `NEXT_PUBLIC_SEPOLIA_RPC_URL`         | client (wagmi)       | wallet transport / wagmi reads                           |
 | `NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID`| client               | optional; injected wallets work without it               |
 | `ENS_REGISTRAR_PRIVATE_KEY`           | server only          | required for server-mode signing; not used by wallet mode |
-| `0G_PRIVATE_KEY`                      | server only          | signs `SPARKiNFT.mintAgent` on 0G Galileo for `/api/0g/mint-inft` (and the rest of `pages/api/0g/*`). Square-bracket env access only — name starts with a digit |
+| `0G_PRIVATE_KEY`                      | server only          | legacy fallback for `/api/0g/mint-inft` + `inft-infer.ts` 0G Compute calls. Production publish path is now user-signed on the wallet, so this is only required for the fallback mint and for 0G Compute. Square-bracket env access only — name starts with a digit |
 | `SEPOLIA_RPC_URL`                     | server fallback      | used by `lib/ens-registry.ts` viem `publicClient`        |
 | `ENS_PARENT_DOMAIN`                   | server fallback      | only consulted if `NEXT_PUBLIC_ENS_PARENT_DOMAIN` unset  |
 
@@ -142,6 +144,20 @@ The contract is approved on NameWrapper by address. If you redeploy, the previou
 
 If the parent domain itself changes you also need to redeploy — `parentNode` is `immutable` in the contract.
 
+### Redeploying RightHandAIINFT on 0G Galileo
+
+After the `SPARKiNFT` → `RightHandAIINFT` rename, the on-chain class name only updates with a fresh deploy. Run from `contracts/` with `0G_PRIVATE_KEY` set in `.env` (funded on 0G Galileo testnet — faucet at `faucet.0g.ai`):
+
+```bash
+cd contracts
+./node_modules/.bin/hardhat compile
+./node_modules/.bin/hardhat ignition deploy ignition/modules/RightHandAIINFT.ts \
+  --network zgTestnet \
+  --deployment-id righthand-inft-v1
+```
+
+Then copy the deployed address from `ignition/deployments/chain-16602/deployed_addresses.json` (look for `RightHandAIINFTModule#RightHandAIINFT`) into `lib/righthand-inft-abi.ts` as `RIGHTHAND_INFT_ADDRESS`. No other approval step needed — anyone can call `mintAgent` with no auth.
+
 ## Gotchas
 
 - **Subname squat is currently possible.** `register(label, …)` does not check if `label` is already taken. Because the contract is approved on the *parent*, NameWrapper's auth check passes regardless of the subname's existing owner — a second `register("alice", …)` overwrites the original owner's record and transfers the wrapped token away. Fix is one line: `if (nameWrapper.isWrapped(subnode)) revert AlreadyRegistered();` in `register()`. Requires a redeploy + re-approval.
@@ -150,7 +166,8 @@ If the parent domain itself changes you also need to redeploy — `parentNode` i
 - **Wallet mode requires `NEXT_PUBLIC_ENS_PARENT_DOMAIN` to match the contract's `parentNode`.** They're independent values today — keep them in sync, or move to reading `parentNode` off-chain via `useReadContract` and stop relying on the env var.
 - **ENS resolution uses `ENS_CHAIN_ID` (Sepolia), not mainnet.** `useEnsName`/`useEnsAvatar` in [Navbar.tsx](components/Navbar.tsx) only resolve names registered on Sepolia ENS. Drop the `chainId` arg or add `mainnet` to `chains` if you want mainnet primary names.
 - **Per-owner discovery is on-chain in v2; cross-owner discovery still isn't.** v2 stores `mapping(address => Registration[]) _ownedByCaller` and exposes `getOwned(address)` / `ownedCount(address)` — `useMySpecialists` calls these directly, no event scan. But this is **registration history**, not live ownership: if a wrapped subname is later transferred elsewhere on NameWrapper, the registrar can't observe it and the entry stays in the list. To enumerate every specialist across every owner you still need to scan `SpecialistRegistered` logs (or use the ENS subgraph for "subdomains of righthand.eth").
-- **iNFT mint is server-signed.** `/api/0g/mint-inft` uses `0G_PRIVATE_KEY` to call `SPARKiNFT.mintAgent(to=connectedAddress, …)` on 0G Galileo, so the user signs only the Sepolia register tx — no chain switch, no 0G gas paid by the user. Works because `mintAgent` has no auth modifier; anyone can mint to any address. To make the user sign the mint themselves you'd need to add chain 16602 to wagmi's `chains` and switch via `useSwitchChain` twice.
+- **iNFT mint is now user-signed on 0G Galileo** (was server-signed). `chains` in [`lib/networkConfig.ts`](lib/networkConfig.ts) includes `[sepolia, ZG_GALILEO]` (chainId 16602) so the wallet can switch. `AgentBuilderForm` calls `useSwitchChain → useWriteContract(mintAgent) → useWaitForTransactionReceipt → useEffect(decodeEventLog "AgentMinted") → useEffect(register on Sepolia)`. Two wallet signatures total. User must hold 0G testnet gas (faucet at `faucet.0g.ai`). The old server-signed `/api/0g/mint-inft` route still exists as a fallback.
+- **Contract was renamed `SPARKiNFT` → `RightHandAIINFT`.** Sol class, ERC721 metadata (`"Right-Hand AI Agent"` / `"RIGHTHAND"`), Ignition module (`RightHandAIINFTModule`), TS ABI file (`lib/righthand-inft-abi.ts`), constants (`RIGHTHAND_INFT_ADDRESS` / `RIGHTHAND_INFT_ABI`), and all imports. The deployed address `0xe457…` is the *legacy* SPARKiNFT instance — still functional ABI-wise but the on-chain class name is the old one. Redeploy to bind a fresh address with the new name.
 - **Don't trust string-equality on addresses.** Always lower-case both sides before comparing (`a.toLowerCase() === b.toLowerCase()`); checksummed strings differ otherwise.
 
 ---
@@ -326,9 +343,9 @@ scripts/
 
 ---
 
-# Phase 2a — local browser demo (working) + AXL/MCP routing (built, not yet wired)
+# Phase 2a — AXL/MCP routing (wired and working) + local demo scripts
 
-Phase 1 proved transport. Phase 2a is the **demo of what an AI agent does on the user's machine**: walks AWS console pages → user signs in → continues to EC2 launch wizard. This currently runs **standalone on the user's machine** (no AXL involved). The next step is wiring it as an MCP service so a remote agent can trigger it via AXL.
+Phase 1 proved transport. Phase 2a runs the demo *over the AXL mesh*: a remote agent on Mac B/C calls into the user's Mac, the user's Mac auto-approves, runs the demo scripts, and live-narrates progress + dialogue back to every connected terminal as colour-coded chat. The standalone scripts still work for solo dev.
 
 ## What's working today (standalone, on the user's machine)
 
@@ -420,42 +437,91 @@ Plus AWS access key in `~/.aws/credentials`, EC2 keypair `nanoclaw-key` saved as
 - **`demo:openclaw` uses PM2 for survival.** `pm2 start ./start.sh --name openclaw --interpreter bash` + `pm2 save` daemonizes the bot under PM2's supervisor. Survives SSH disconnect; **does NOT survive instance reboot** unless you also run `pm2 startup` and follow the sudo command it prints. The script intentionally skips `pm2 startup` because we can't auto-respond to its sudo prompt.
 - **State file handoff between `aws-2` and `openclaw`.** `aws-2` writes `$TMPDIR/openclaw-demo-state.json` with `{ instanceId, publicIp, region, keyPath }`. `openclaw` (outer mode) reads it. If you skip `aws-2` (e.g. you provisioned the box some other way), pass the IP explicitly: `npm run demo:openclaw -- 1.2.3.4` or `PUBLIC_IP=1.2.3.4 npm run demo:openclaw`.
 
-## What's parked, ready to wire (the AXL/MCP integration)
+## The AXL/MCP integration (wired and working)
 
-The full Phase 2a vision was: a remote agent on Mac B (`agent-b`) calls AXL's `/mcp/<user-peer>/aws` endpoint → AXL forwards through Yggdrasil to user's Mac → vendored `mcp-router.py` (port 9003) dispatches → `aws.ts` MCP server (port 9100) prompts approval → runs the demo flow.
+End-to-end flow: agent on Mac B/C calls `npm run mcp:demo:<step>` → AXL routes through Yggdrasil to user's Mac → `mcp-router.py` (port 9003) dispatches → `aws.ts` (port 9100) auto-approves → spawns the corresponding `tsx scripts/demo-*.ts` as a child process → progress + dialogue stream back to every peer's `axl:start` terminal as live chat.
 
-These pieces exist:
-- [`axl/mcp-router.py`](axl/mcp-router.py) — vendored verbatim from `gensyn-ai/axl/integrations/mcp_routing/`
-- [`axl/mcp-servers/aws.ts`](axl/mcp-servers/aws.ts) — Express MCP service exposing 4 tools (`open_console`, `launch_instance`, `show_in_console`, `install_nanoclaw`)
-- [`axl/mcp-servers/permission.ts`](axl/mcp-servers/permission.ts) — terminal y/n approval gate (serialised via promise chain so concurrent calls don't race on stdin)
-- [`scripts/mcp-call.ts`](scripts/mcp-call.ts) — sender CLI: `npm run mcp:call -- <role> <svc> <tool> '<args>'`
-- [`scripts/setup-axl.sh`](scripts/setup-axl.sh) already adds `router_addr` + `router_port=9003` to `node-config.json` for the user role, and pip-installs `aiohttp`
-- [`scripts/axl-start.sh`](scripts/axl-start.sh) already background-starts `mcp-router.py` + `aws.ts` on the user role and monitors them in the polling loop
+### MCP service: `aws` (3 tools, each wraps a demo script)
 
-What's missing for the AXL integration to work:
-1. The aforementioned `@aws-sdk/client-ec2` + `ssh2` deps so `aws.ts` compiles
-2. Replace the hardcoded `aws.ts` tools with calls into the **standalone demo scripts** above (so the AXL-routed flow is the same browser walk + SDK launch + SSH install we already have working locally) — i.e. pivot `aws.ts`'s tool implementations from "do the work directly" to "spawn `tsx scripts/demo-before.ts` etc. as child processes"
-3. Confirm the AXL-side wiring on a real 3-Mac mesh: agent-b runs `mcp-call user aws walk_through` → user's Mac shows approval prompt + runs the demo
+[`axl/mcp-servers/aws.ts`](axl/mcp-servers/aws.ts) exposes:
 
-### Verified MCP request shape (from gensyn-ai/axl/integrations/mcp_routing/mcp_router.py)
+| tool | spawns | runtime | demo step |
+|---|---|---|---|
+| `aws_signin` | `tsx scripts/demo-aws-1.ts` | ~3 s | open AWS sign-in pages on user's Chrome |
+| `provision_ec2` | `tsx scripts/demo-aws-2.ts` | ~60–80 s | always-fresh EC2 (terminates the previous demo instance first), keypair + SG + run-instances + wait running + 30s sshd; writes state file |
+| `install_openclaw` | `tsx scripts/demo-openclaw.ts` | ~3 s outer + ~2 min inner | outer: spawns Terminal.app on user's Mac and exits; inner: SSH-installs OpenClaw under PM2 + opens Telegram bot URL on user's browser |
+
+Wrappers in [`scripts/mcp-demo.sh`](scripts/mcp-demo.sh) → `npm run mcp:demo:signin` / `:provision` / `:install`. Sender resolves target pubkey from `axl/peers.json`, posts to local AXL `/mcp/<pubkey>/aws`. None of `@aws-sdk/client-ec2` / `ssh2` are needed — the demo scripts shell out to system `aws` and `ssh`.
+
+### Live demo dialogue (the chat that plays across all 3 axl:start terminals)
+
+Each MCP call produces a scripted multi-machine conversation rendered in real time. Driven by:
+
+- **Per-tool flavour text** in [`scripts/mcp-call.ts`](scripts/mcp-call.ts): `startingText()`, `ackText()`, `directiveText()` give each of the 3 tools its own announcement strings. Bodies are bare ("starting EC2 provision") — no role-name prefix, no prescriptive "you do X" directives.
+- **Per-role auto-replies** in [`axl/agent.ts`](axl/agent.ts) `CHAT_RULES`: each role responds to specific incoming kind/tool/pattern matches with a delayed broadcast. Examples: agent-c on `starting:aws_signin` (delay 1.5 s) → "ok, fetching the Telegram bot ID + token while you log in"; agent-c on `starting:provision_ec2` (delay 10 s) → "got the bot token ready, waiting on you"; agent-b matches the regex `/got the bot token/` (delay 2 s) → "still provisioning, almost there". Reply chains capped at depth 2 to prevent loops.
+- **Real-time progress pings** in `aws.ts`: while a long-running tool runs, parses the script's stdout (matches `━━ [N/M] step`, `→ arrow`, `✓ ok`, `✗ fail`) and broadcasts each transition within 1 s, plus a 20 s heartbeat for AXL session warmth. So `provision_ec2`'s 6 steps reach every peer's screen near-instantly instead of waiting for the call to return.
+- **Deferred truthful announcements**: the "@user OpenClaw deploy complete — Telegram bot is live at <URL>" line is broadcast from `demo-openclaw.ts` *inner* mode (after the SSH install + `openUrl` actually succeeded), not from the outer-mode MCP ack — so the announcement is never premature.
+
+### Per-terminal POV + colour scheme
+
+Each Mac's `axl:start` log renders the same A2A traffic from its own first-person POV. Local role is always "me" (magenta); other roles keep stable colours so the audience can scan three side-by-side terminals at a glance.
+
+| role | colour |
+|---|---|
+| me (local) | magenta / purple |
+| user | green |
+| agent-b | yellow |
+| agent-c | blue |
+| **bystander** (overheard directive between two other roles) | bright cyan |
+
+Three categories of line:
+
+| metadata | rendered as | example |
+|---|---|---|
+| `internal: true` | `[me] doing X` (no arrow) | local-only AI monologue, never broadcast |
+| `directed: true, target: <role>` | sender's screen `[me → <target>]`, target's screen `[<sender> → me]`, bystander's screen `[<sender> → <target>]` cyan | `mcp-call.ts` `sendDirective()` blasts to ALL peers; agent.ts checks `meta.target` to pick the right rendering |
+| no `target` (broadcast) | `[me → all]` on sender, `[<sender> → me]` on others | progress pings, starting/ack |
+
+Auto-reply broadcasts from `agent.ts` set `metadata.replyDepth` so the rule engine caps chains at 2 hops without needing an `autoReply` blacklist.
+
+### Script terminal vs axl:start terminal — the rule
+
+**Hard rule**: the script terminal where you ran `mcp:demo:*` shows only the call URL + `✓ done` or `✗ <reason>`. All chat (own outbound, others' inbound, progress pings, auto-reply triggers) lands in the **axl:start** terminal. Each terminal has one job — script does action, axl:start narrates conversation.
+
+This is enforced in `mcp-call.ts`: it broadcasts (so other peers see the message) but doesn't `console.log` the chat lines locally. To make sender's *own* outbound also appear in their local axl:start, broadcasts loop through their own pubkey too — local AXL forwards back to local agent.ts on port 9004, which logs it as `[me → all]`.
+
+### Auto-approve and timeout config
+
+- **Auto-approve is the default** in [`axl/mcp-servers/permission.ts`](axl/mcp-servers/permission.ts). No keystroke required. Set `MCP_REQUIRE_APPROVAL=1` to bring back the y/n prompt for filming the gate.
+- **Router forward timeout = 600 s** ([`axl/mcp-router.py`](axl/mcp-router.py), bumped from upstream's 30 s). Covers the ~60 s `provision_ec2` runtime end-to-end.
+- **AXL's own per-socket idle timeout is ~60 s** (`Connection read timeout: 1m0s` from the node startup log). For `provision_ec2`, this is right at the edge — the call can still 502 at the AXL transport layer even though the script succeeded on user's Mac. The per-step progress broadcasts (1 s cadence) keep traffic flowing and mitigate this in practice; the state file is the source of truth for `install_openclaw` regardless of whether cedric's terminal got its JSON-RPC ack.
+
+### `mcp-call.ts` polling endpoint
+
+[`axl/agent.ts`](axl/agent.ts) keeps an in-memory ring of the last 200 inbound A2A messages and exposes `GET /messages?since=<seq>`. Currently unused by `mcp-call.ts` (we keep the script terminal silent), but available for any future UI subscriber that wants a live tail of the chat.
+
+### Verified MCP request shape
 
 Sender:
 ```
 POST http://127.0.0.1:9002/mcp/<peer-pubkey>/aws
 { "jsonrpc":"2.0", "id":1, "method":"tools/call", "params":{"name":"...","arguments":{...}} }
 ```
-
 AXL forwards to `router_addr:router_port` (`http://127.0.0.1:9003/route`):
 ```
 { "service":"aws", "request": <jsonrpc-above>, "from_peer_id":"<28hex>" }
 ```
-
-Router POSTs the inner `request` body to the registered service's `/mcp` endpoint with headers `X-From-Peer-Id` (use `matchesPeer()` from `axl/axl.ts` — header is truncated to ~28 hex), `X-Service`. Service prompts approval, runs the tool, returns:
+Router POSTs the inner `request` body to the registered service's `/mcp` endpoint with headers `X-From-Peer-Id` (truncated to ~28 hex; use `matchesPeer()` from [`axl/axl.ts`](axl/axl.ts)), `X-Service`. Service auto-approves, runs the tool, returns:
 ```
 { "jsonrpc":"2.0", "id":1, "result":{ "content":[{"type":"text","text":"<json-stringified result>"}] } }
 ```
-
 Router wraps as `{response: <jsonrpc>, error: null}` and the response propagates back through AXL to the sender.
+
+### Gotchas (Phase 2a-specific)
+
+- **`peers.json` is the discovery source for broadcasts.** A stale agent-c pubkey on cedric's side silently kills cedric → agent-c broadcasts (Yggdrasil routes to a dead pubkey, fetch times out, error swallowed by abort timeout). Diagnostic: `curl -s http://127.0.0.1:9002/topology | jq -r .our_public_key` on each Mac and compare against `axl/peers.json`.
+- **`axl/node-config*.json` and `axl/*.pem` are now gitignored** (broadened from just `axl/node-config.json`). Two stale loopback configs (`node-config1.json`, `node-config2.json`) were untracked. Each Mac regenerates these locally via `npm run axl:setup`.
+- **GossipSub is *not* a built-in AXL HTTP API.** The `gensyn-ai/axl` repo ships a Python *example* (`examples/python-client/gossipsub/gossipsub.py`) that implements the meshsub algorithm on top of AXL's basic `POST /send` / `GET /recv`. To adopt: port ~300 lines to TS, OR vendor the Python as a sidecar. For 3 fixed peers + known pubkeys (current state), per-peer A2A POSTs work fine. Reconsider for Phase 2b's dynamic-peer scenarios.
 
 ---
 

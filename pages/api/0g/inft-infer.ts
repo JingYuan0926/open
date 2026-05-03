@@ -1,6 +1,6 @@
 import type { NextApiRequest, NextApiResponse } from "next";
 import { createPublicClient, http } from "viem";
-import { SPARKINFT_ADDRESS, SPARKINFT_ABI } from "@/lib/sparkinft-abi";
+import { RIGHTHAND_INFT_ADDRESS, RIGHTHAND_INFT_ABI } from "@/lib/righthand-inft-abi";
 import { Indexer } from "@0gfoundation/0g-ts-sdk";
 import { readFileSync, unlinkSync } from "fs";
 import { join } from "path";
@@ -201,14 +201,14 @@ export default async function handler(
     try {
       const [ownerResult, authResult] = await Promise.all([
         viemClient.readContract({
-          address: SPARKINFT_ADDRESS,
-          abi: SPARKINFT_ABI,
+          address: RIGHTHAND_INFT_ADDRESS,
+          abi: RIGHTHAND_INFT_ABI,
           functionName: "ownerOf",
           args: [BigInt(tokenId)],
         }),
         viemClient.readContract({
-          address: SPARKINFT_ADDRESS,
-          abi: SPARKINFT_ABI,
+          address: RIGHTHAND_INFT_ADDRESS,
+          abi: RIGHTHAND_INFT_ABI,
           functionName: "isAuthorized",
           args: [BigInt(tokenId), callerAddress as `0x${string}`],
         }),
@@ -231,14 +231,14 @@ export default async function handler(
     // 2. Read IntelligentData from on-chain (ERC-7857)
     const [intelligentDatas, profile] = await Promise.all([
       viemClient.readContract({
-        address: SPARKINFT_ADDRESS,
-        abi: SPARKINFT_ABI,
+        address: RIGHTHAND_INFT_ADDRESS,
+        abi: RIGHTHAND_INFT_ABI,
         functionName: "intelligentDatasOf",
         args: [BigInt(tokenId)],
       }),
       viemClient.readContract({
-        address: SPARKINFT_ADDRESS,
-        abi: SPARKINFT_ABI,
+        address: RIGHTHAND_INFT_ADDRESS,
+        abi: RIGHTHAND_INFT_ABI,
         functionName: "getAgentProfile",
         args: [BigInt(tokenId)],
       }),
@@ -337,7 +337,7 @@ export default async function handler(
     {
       const systemPrompt =
         agentConfig?.systemPrompt ||
-        `You are ${p.botId}, a SPARK agent specializing in ${p.domainTags}. You offer ${p.serviceOfferings}. Keep responses concise and helpful.`;
+        `You are ${p.botId}, a Right-Hand AI agent specializing in ${p.domainTags}. You offer ${p.serviceOfferings}. Keep responses concise and helpful.`;
       const tokens = maxTokens || 500;
 
       try {

@@ -416,7 +416,7 @@ export default function ZeroGPlayground() {
             </div>
 
             <div>
-              <SectionTitle hint="ERC-7857 SPARK iNFT specialist agents">iNFT</SectionTitle>
+              <SectionTitle hint="ERC-7857 Right-Hand AI iNFT specialist agents">iNFT</SectionTitle>
               <div className="space-y-4">
                 <InftUploadConfigCard />
                 <InftInferCard />

@@ -2,6 +2,12 @@
 
 import * as React from "react";
 import { ConnectButton } from "@rainbow-me/rainbowkit";
+import { decodeEventLog } from "viem";
+import {
+  useSwitchChain,
+  useWaitForTransactionReceipt,
+  useWriteContract,
+} from "wagmi";
 import { Card, CardHeader } from "@/components/ui/Card";
 import { Input, Textarea, Field } from "@/components/ui/Input";
 import { Button } from "@/components/ui/Button";
@@ -13,15 +19,24 @@ import {
   useRegisterSpecialist,
 } from "@/lib/ens/SpecialistRegistrar";
 import { isValidLabel } from "@/lib/ens-registry";
-import type { SpecialistRecords } from "@/lib/networkConfig";
-import { SPARKINFT_ADDRESS } from "@/lib/sparkinft-abi";
+import {
+  ZG_GALILEO_CHAIN_ID,
+  type SpecialistRecords,
+} from "@/lib/networkConfig";
+import {
+  RIGHTHAND_INFT_ABI,
+  RIGHTHAND_INFT_ADDRESS,
+} from "@/lib/righthand-inft-abi";
 import { SKILL_CATALOG } from "@/lib/skills";
 
 function inftUrl(tokenId: string) {
-  return `https://chainscan-galileo.0g.ai/nft/${SPARKINFT_ADDRESS}/${tokenId}`;
+  return `https://chainscan-galileo.0g.ai/nft/${RIGHTHAND_INFT_ADDRESS}/${tokenId}`;
 }
 
-type MintStep = "idle" | "minting" | "minted" | "error";
+// switching → wallet asked to swap to 0G Galileo
+// signing  → wallet asked to sign the mint tx
+// confirming → tx submitted, awaiting receipt
+type MintStep = "idle" | "switching" | "signing" | "confirming" | "minted" | "error";
 
 function shortAddress(addr?: string | null) {
   if (!addr) return "—";
@@ -67,10 +82,10 @@ export function AgentBuilderForm() {
   const [price, setPrice] = React.useState("0.16");
   const [runtime, setRuntime] = React.useState("Node 20 · isolated VM");
 
-  // iNFT mint state — populated by /api/0g/mint-inft before ENS register.
+  // iNFT mint state — driven by user-signed wagmi calls below. The owner
+  // signs the mint themselves on 0G Galileo with their own key.
   const [mintStep, setMintStep] = React.useState<MintStep>("idle");
   const [mintTokenId, setMintTokenId] = React.useState<string | null>(null);
-  const [mintTxHash, setMintTxHash] = React.useState<string | null>(null);
   const [mintError, setMintError] = React.useState<string | null>(null);
 
   const slug =
@@ -91,73 +106,131 @@ export function AgentBuilderForm() {
     isBusy: registerBusy,
   } = useRegisterSpecialist();
 
+  const { switchChainAsync } = useSwitchChain();
+  const {
+    writeContractAsync: writeMint,
+    data: mintTxHash,
+    reset: resetMintWrite,
+  } = useWriteContract();
+  const {
+    data: mintReceipt,
+    isLoading: mintConfirming,
+    error: mintReceiptError,
+  } = useWaitForTransactionReceipt({
+    hash: mintTxHash,
+    chainId: ZG_GALILEO_CHAIN_ID,
+  });
+
+  // Pull tokenId out of AgentMinted(uint256 indexed tokenId, address indexed owner, string botId)
+  // as soon as the mint receipt arrives.
+  React.useEffect(() => {
+    if (!mintReceipt || mintTokenId !== null) return;
+    for (const log of mintReceipt.logs) {
+      try {
+        const parsed = decodeEventLog({
+          abi: RIGHTHAND_INFT_ABI,
+          data: log.data,
+          topics: log.topics,
+          eventName: "AgentMinted",
+        });
+        if (parsed.eventName === "AgentMinted") {
+          const tid = (parsed.args as { tokenId: bigint }).tokenId.toString();
+          setMintTokenId(tid);
+          setMintStep("minted");
+          return;
+        }
+      } catch {
+        // not from this contract / different event
+      }
+    }
+  }, [mintReceipt, mintTokenId]);
+
+  React.useEffect(() => {
+    if (mintReceiptError) {
+      setMintError(mintReceiptError.message);
+      setMintStep("error");
+    }
+  }, [mintReceiptError]);
+
   const fullName = `${slug}.${status.parentDomain}`;
-  // Until the iNFT is minted we don't have a tokenId, so the workspace URI
-  // is shown as a placeholder. The actual value written into ENS uses the
-  // post-mint tokenId — see `onPublish` below.
   const workspaceUriPreview =
     mintTokenId !== null ? inftUrl(mintTokenId) : "(set after iNFT mint)";
 
-  const isBusy = mintStep === "minting" || registerBusy;
+  const isBusy =
+    mintStep === "switching" ||
+    mintStep === "signing" ||
+    mintStep === "confirming" ||
+    mintConfirming ||
+    registerBusy;
   const isSuccess = registerStep === "success";
   const hasError = mintStep === "error" || registerStep === "error";
 
   const reset = React.useCallback(() => {
     setMintStep("idle");
     setMintTokenId(null);
-    setMintTxHash(null);
     setMintError(null);
+    resetMintWrite();
     resetRegister();
-  }, [resetRegister]);
+  }, [resetMintWrite, resetRegister]);
 
-  const onPublish = async () => {
-    if (!labelValid || !status.connectedAddress) return;
-
-    // Step 1: mint iNFT on 0G Galileo (server-signed).
-    setMintStep("minting");
-    setMintError(null);
-    setMintTokenId(null);
-    setMintTxHash(null);
-
-    let tokenId: string;
-    try {
-      const r = await fetch("/api/0g/mint-inft", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          to: status.connectedAddress,
-          botId: slug,
-          domainTags: skill,
-          serviceOfferings: desc,
-        }),
-      });
-      const j = await r.json();
-      if (!j.success) throw new Error(j.error || "iNFT mint failed");
-      tokenId = j.tokenId as string;
-      setMintTokenId(tokenId);
-      setMintTxHash(j.txHash as string);
-      setMintStep("minted");
-    } catch (e) {
-      setMintError(e instanceof Error ? e.message : String(e));
-      setMintStep("error");
-      return;
-    }
-
-    // Step 2: register the ENS subname on Sepolia. We only persist the
-    // user-meaningful records (skills, workspaceUri, price) — axlPubkey,
-    // tokenId, and version are written as empty strings since they're not
-    // surfaced in the form. The contract still requires the 6-field struct
-    // shape; empty strings are valid resolver text values. The iNFT linkage
-    // survives via workspaceUri's chainscan URL (which embeds the token id).
+  // Once the mint is confirmed and we have a tokenId, kick off the ENS
+  // register on Sepolia. wagmi will switch chains for us on signature.
+  // Only skills/workspaceUri/price are user-meaningful; the other three
+  // resolver fields are written as empty strings (the contract still
+  // requires the 6-field struct shape). The iNFT linkage survives via
+  // workspaceUri's chainscan URL, which embeds the token id.
+  React.useEffect(() => {
+    if (mintStep !== "minted" || !mintTokenId || registerStep !== "idle") return;
     const records: SpecialistRecords = {
       axlPubkey: "",
       skills: skill,
-      workspaceUri: inftUrl(tokenId),
+      workspaceUri: inftUrl(mintTokenId),
       tokenId: "",
       price,
       version: "",
     };
     register(slug, records);
+  }, [mintStep, mintTokenId, registerStep, skill, price, slug, register]);
+
+  const onPublish = async () => {
+    if (!labelValid || !status.connectedAddress) return;
+
+    setMintError(null);
+    setMintTokenId(null);
+
+    // Step 1a: switch wallet to 0G Galileo so the mint signature lands
+    // on the right chain. wagmi prompts the wallet UI; the user approves.
+    setMintStep("switching");
+    try {
+      await switchChainAsync({ chainId: ZG_GALILEO_CHAIN_ID });
+    } catch (e) {
+      setMintError(`Switch to 0G Galileo failed: ${e instanceof Error ? e.message : String(e)}`);
+      setMintStep("error");
+      return;
+    }
+
+    // Step 1b: user signs the mintAgent(...) tx on 0G Galileo. They pay
+    // 0G gas; the iNFT goes to their address since msg.sender == the
+    // connected wallet (mintAgent's `to` arg uses msg.sender).
+    setMintStep("signing");
+    try {
+      await writeMint({
+        address: RIGHTHAND_INFT_ADDRESS,
+        abi: RIGHTHAND_INFT_ABI,
+        functionName: "mintAgent",
+        args: [status.connectedAddress as `0x${string}`, slug, skill, desc, []],
+        chainId: ZG_GALILEO_CHAIN_ID,
+      });
+      setMintStep("confirming");
+    } catch (e) {
+      setMintError(e instanceof Error ? e.message : String(e));
+      setMintStep("error");
+      return;
+    }
+    // Receipt + tokenId extraction happens in the useEffect above.
+    // Once mintStep flips to "minted", the second useEffect kicks off
+    // the ENS register — which itself prompts a chain-switch back to
+    // Sepolia and a second wallet signature.
   };
 
   const showResetButton = isSuccess || hasError;
@@ -166,17 +239,25 @@ export function AgentBuilderForm() {
     <Badge variant="success" dot>
       Registered
     </Badge>
-  ) : mintStep === "minting" ? (
+  ) : mintStep === "switching" ? (
+    <Badge variant="info" dot>
+      Switching to 0G
+    </Badge>
+  ) : mintStep === "signing" ? (
+    <Badge variant="info" dot>
+      Sign mint on 0G
+    </Badge>
+  ) : mintStep === "confirming" || mintConfirming ? (
     <Badge variant="info" dot>
       Minting iNFT
     </Badge>
   ) : registerStep === "registering" ? (
     <Badge variant="info" dot>
-      Awaiting signature
+      Sign ENS on Sepolia
     </Badge>
   ) : registerStep === "confirming" ? (
     <Badge variant="info" dot>
-      Confirming
+      Confirming ENS
     </Badge>
   ) : hasError ? (
     <Badge variant="danger" dot>
@@ -187,18 +268,22 @@ export function AgentBuilderForm() {
   );
 
   const buttonLabel =
-    mintStep === "minting"
-      ? "Minting iNFT…"
-      : registerStep === "registering"
-        ? "Sign in wallet…"
-        : registerStep === "confirming"
-          ? "Confirming…"
-          : "Publish Specialist";
+    mintStep === "switching"
+      ? "Switching to 0G…"
+      : mintStep === "signing"
+        ? "Sign mint in wallet…"
+        : mintStep === "confirming" || mintConfirming
+          ? "Minting iNFT on 0G…"
+          : registerStep === "registering"
+            ? "Sign ENS in wallet…"
+            : registerStep === "confirming"
+              ? "Confirming ENS…"
+              : "Publish Specialist";
 
   const inftPreviewText =
     mintTokenId !== null
       ? `iNFT #${mintTokenId} · owner: ${shortAddress(status.connectedAddress ?? null)}`
-      : mintStep === "minting"
+      : mintStep === "switching" || mintStep === "signing" || mintStep === "confirming" || mintConfirming
         ? "iNFT — minting on 0G Galileo…"
         : `iNFT — minted on publish · to ${shortAddress(status.connectedAddress ?? null)}`;
 
@@ -319,7 +404,7 @@ export function AgentBuilderForm() {
                 <Badge variant="success" mono dot>
                   #{mintTokenId}
                 </Badge>
-              ) : mintStep === "minting" ? (
+              ) : mintStep === "switching" || mintStep === "signing" || mintStep === "confirming" || mintConfirming ? (
                 <Badge variant="info" mono>
                   minting
                 </Badge>
@@ -422,10 +507,10 @@ export function AgentBuilderForm() {
 
           <div className="text-[11.5px] text-ink-3">
             Publishing first mints an ERC-721 iNFT on 0G Galileo to your wallet
-            (server-signed, no chain switch), then registers the ENS subname
-            under {status.parentDomain} on Sepolia with{" "}
+            (you sign the mint), then registers the ENS subname under{" "}
+            {status.parentDomain} on Sepolia with{" "}
             <code className="font-mono">0g_workspace_uri</code> pointing at the
-            iNFT&rsquo;s chainscan URL — one wallet signature on Sepolia.
+            iNFT&rsquo;s chainscan URL — two wallet signatures total.
           </div>
         </div>
       </div>

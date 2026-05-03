@@ -7,8 +7,8 @@ import { useCallback, useState } from "react";
 // X-PAYMENT header (base64 JSON) and the server pushes the on-chain tx.
 
 const X402_VERSION = 1;
-const SCHEME = "native";
-const NETWORK = "0g-galileo-testnet";
+const SCHEME = "exact";
+const NETWORK = "base-sepolia";
 
 export type PayAgentInput = {
     agentName: string;
