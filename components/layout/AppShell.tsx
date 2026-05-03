@@ -5,8 +5,7 @@ import { useRouter } from "next/router";
 import { NAV_USER, NAV_HOST, HISTORY } from "@/lib/mock-data";
 
 // Maps sidebar nav-item ids to actual page routes. Items without a route
-// (e.g. `connector`, `settings`, `host-invocations`) stay as no-ops until
-// their pages exist.
+// (e.g. `connector`, `settings`) stay as no-ops until their pages exist.
 const NAV_ROUTES: Record<string, string> = {
   // user-mode
   chat: "/landing",
@@ -15,6 +14,7 @@ const NAV_ROUTES: Record<string, string> = {
   // host-mode
   host: "/host",
   "host-agents": "/agents",
+  "host-tasks": "/marketplace",
 };
 
 export function AppShell({ children, mode = "user", crumbs }: {
