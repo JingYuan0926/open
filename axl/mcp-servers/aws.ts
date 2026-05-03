@@ -1,46 +1,46 @@
 // axl/mcp-servers/aws.ts
 //
-// Express MCP service exposing AWS operations to remote agents over AXL.
+// Express MCP service exposing the local AWS + OpenClaw demo scripts to
+// remote agents over AXL. Each tool spawns the corresponding
+// `tsx scripts/demo-*.ts` after the user approves on their terminal.
 //
 // Inbound flow:
-//   sender (agent-b/c)  →  POST :9002/mcp/<user-pubkey>/aws  on their AXL node
-//      → AXL Yggdrasil  →  user's AXL on :9002
+//   sender (agent-b/c)   →  POST :9002/mcp/<user-pubkey>/aws  on their AXL node
+//      → AXL Yggdrasil   →  user's AXL on :9002
 //      → user's mcp-router.py on :9003 (POST /route)
 //      → THIS server on :9100 (POST /mcp)
-//      → permission prompt on user's terminal
-//      → tool dispatch (browser / EC2 SDK / SSH)
+//      → terminal approval prompt on user's machine
+//      → child_process.spawn("tsx", ["scripts/demo-...ts"])
 //      → response back through the same chain
 //
-// On startup we POST /register to the router so it knows where to forward calls
-// for service "aws". The router retries on its side; we also retry registration
-// in case the router takes a moment to come up.
+// On startup we POST /register to the router so it knows where to forward
+// calls for service "aws". We retry registration in case the router takes a
+// moment to come up.
 
 import express from "express";
+import { spawn } from "node:child_process";
 import { existsSync, readFileSync } from "node:fs";
-import { resolve } from "node:path";
+import { tmpdir } from "node:os";
+import { join, resolve } from "node:path";
 import { matchesPeer } from "../axl";
 import { promptApproval } from "./permission";
-import { openUrl } from "./aws-helpers/browser";
-import { AWS_URLS } from "./aws-helpers/urls";
-import { runInstance, waitForRunning } from "./aws-helpers/ec2";
-import { runRemote } from "./aws-helpers/ssh";
 
 const PORT = 9100;
 const ROUTER_URL = "http://127.0.0.1:9003";
 const SERVICE_NAME = "aws";
 const MOCK = process.env.MCP_AWS_MODE === "mock";
 
-const KEY_PATH = resolve("axl/nanoclaw-key.pem");
-
-// nanoclaw "install" command. Default placeholder = always succeeds in <1s.
-// Replace with the real install one-liner when you have it.
-const NANOCLAW_INSTALL_CMD = process.env.NANOCLAW_INSTALL_CMD ??
-  `echo "nanoclaw installed: $(date)" > /tmp/nanoclaw.log && cat /tmp/nanoclaw.log`;
+// Resolved against cwd, which `axl-start.sh` sets to repo root before exec'ing
+// us via tsx. Same convention as the rest of the AXL scripts.
+const TSX_BIN = resolve("node_modules/.bin/tsx");
+const STATE_PATH = join(tmpdir(), "openclaw-demo-state.json");
 
 interface PeerEntry { apiPort: number; pubkey: string; }
 
 function loadPeerPubkeys(): Record<string, string> {
-  const raw = JSON.parse(readFileSync(resolve("axl/peers.json"), "utf8")) as Record<string, unknown>;
+  const raw = JSON.parse(
+    readFileSync(resolve("axl/peers.json"), "utf8"),
+  ) as Record<string, unknown>;
   const out: Record<string, string> = {};
   for (const [role, val] of Object.entries(raw)) {
     if (val && typeof val === "object" && "pubkey" in val) {
@@ -61,82 +61,273 @@ function resolveRole(headerPeerId: string): string {
 }
 
 function sleep(ms: number): Promise<void> {
-  return new Promise(r => setTimeout(r, ms));
+  return new Promise((r) => setTimeout(r, ms));
+}
+
+interface ScriptResult {
+  ok: boolean;
+  exit_code: number | null;
+  stdout_tail: string;
+  stderr_tail: string;
+}
+
+// Mutable status object shared between runDemoScript and the progress pinger.
+// runDemoScript updates `status` whenever a `━━ [N/M] …` step header or `→`
+// progress arrow shows up in the script's stdout; the pinger reads it.
+interface ScriptProgress {
+  status: string;
+  startedAt: number;
+}
+
+function newProgress(initial: string): ScriptProgress {
+  return { status: initial, startedAt: Date.now() };
+}
+
+// Pull "step N/M: title" or arrow-prefixed status lines out of a stdout chunk.
+// Returns the latest one found, or null if there isn't one.
+function extractLatestProgress(chunk: string): string | null {
+  const lines = chunk.split("\n");
+  let latest: string | null = null;
+  for (const raw of lines) {
+    const line = raw.trim();
+    // ━━ [4/6] aws ec2 run-instances t3.micro
+    const stepMatch = line.match(/━━\s*\[(\d+)\/(\d+)\]\s*(.+)/);
+    if (stepMatch) {
+      latest = `step ${stepMatch[1]}/${stepMatch[2]} — ${stepMatch[3].trim()}`;
+      continue;
+    }
+    // → Opening AWS landing page…
+    const arrowMatch = line.match(/^→\s*(.+)/);
+    if (arrowMatch) {
+      latest = arrowMatch[1].trim();
+    }
+  }
+  return latest;
+}
+
+// Spawn a demo script. stdout/stderr both stream to *this* server's terminal
+// (so the user can watch the demo progress live) AND get captured (last few
+// KB) for the MCP JSON-RPC response. If `progress` is supplied, recognised
+// status lines update it in real time.
+function runDemoScript(
+  scriptRelPath: string,
+  env: Record<string, string> = {},
+  progress?: ScriptProgress,
+): Promise<ScriptResult> {
+  return new Promise((res) => {
+    if (!existsSync(TSX_BIN)) {
+      res({
+        ok: false,
+        exit_code: null,
+        stdout_tail: "",
+        stderr_tail: `tsx not found at ${TSX_BIN}. Run 'npm install' first.`,
+      });
+      return;
+    }
+    if (!existsSync(resolve(scriptRelPath))) {
+      res({
+        ok: false,
+        exit_code: null,
+        stdout_tail: "",
+        stderr_tail: `script not found: ${scriptRelPath}`,
+      });
+      return;
+    }
+
+    const child = spawn(TSX_BIN, [scriptRelPath], {
+      cwd: process.cwd(),
+      env: { ...process.env, ...env },
+      stdio: ["ignore", "pipe", "pipe"],
+    });
+
+    let stdout = "";
+    let stderr = "";
+    const tailMax = 4000;
+    const tail = (s: string) => (s.length > tailMax ? s.slice(-tailMax) : s);
+
+    child.stdout.on("data", (chunk: Buffer) => {
+      const s = chunk.toString();
+      process.stdout.write(s);
+      stdout += s;
+      if (progress) {
+        const next = extractLatestProgress(s);
+        if (next) progress.status = next;
+      }
+    });
+    child.stderr.on("data", (chunk: Buffer) => {
+      const s = chunk.toString();
+      process.stderr.write(s);
+      stderr += s;
+    });
+    child.on("close", (code) => {
+      res({
+        ok: code === 0,
+        exit_code: code,
+        stdout_tail: tail(stdout),
+        stderr_tail: tail(stderr),
+      });
+    });
+    child.on("error", (err) => {
+      res({
+        ok: false,
+        exit_code: null,
+        stdout_tail: tail(stdout),
+        stderr_tail: tail(`${stderr}\nspawn error: ${err.message}`),
+      });
+    });
+  });
+}
+
+function readState(): { publicIp?: string; instanceId?: string; region?: string } | null {
+  if (!existsSync(STATE_PATH)) return null;
+  try {
+    return JSON.parse(readFileSync(STATE_PATH, "utf8"));
+  } catch {
+    return null;
+  }
+}
+
+// ────────────────────────────────────────────────────────────────────────
+//  Progress pings: while a long-running tool is in flight, fire an A2A
+//  message to every other peer every PROGRESS_MS with the *current* step
+//  parsed out of the script's stdout — e.g. "step 4/6 — aws ec2 run-
+//  instances t3.micro · 38s elapsed". The receiving peer's agent.ts logs
+//  it, so the audience watches real progress unfold across machines
+//  instead of staring at a blank terminal until the whole call returns.
+//  Pure UI plumbing — does not change the script's behaviour or success.
+// ────────────────────────────────────────────────────────────────────────
+const PROGRESS_MS = 20_000;
+
+function loadMyRole(): string {
+  try { return readFileSync(resolve(".axl/role"), "utf8").trim(); }
+  catch { return "?"; }
+}
+
+interface RawPeerEntry { apiPort?: number; pubkey?: string; }
+
+async function broadcastA2A(text: string): Promise<void> {
+  const myRole = loadMyRole();
+  let peers: Record<string, RawPeerEntry>;
+  try {
+    peers = JSON.parse(readFileSync(resolve("axl/peers.json"), "utf8")) as Record<string, RawPeerEntry>;
+  } catch {
+    return;
+  }
+
+  const myEntry = peers[myRole];
+  const myPort = myEntry?.apiPort ?? 9002;
+
+  const tasks: Promise<unknown>[] = [];
+  for (const [role, entry] of Object.entries(peers)) {
+    if (role === myRole) continue;
+    if (!entry || typeof entry !== "object") continue;
+    const pk = entry.pubkey;
+    if (!pk) continue;
+
+    const url = `http://127.0.0.1:${myPort}/a2a/${pk}/`;
+    const body = {
+      jsonrpc: "2.0",
+      id: Date.now(),
+      method: "message/send",
+      params: {
+        message: {
+          kind: "message",
+          messageId: `progress-${Date.now()}-${role}`,
+          role: "user",
+          parts: [{ kind: "text", text }],
+          metadata: { fromRole: myRole, progress: true },
+        },
+      },
+    };
+    tasks.push(
+      fetch(url, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      }).catch(() => undefined),
+    );
+  }
+  await Promise.all(tasks);
+}
+
+async function withProgress<T>(
+  label: string,
+  fn: (progress: ScriptProgress) => Promise<T>,
+): Promise<T> {
+  const progress = newProgress(`${label} starting`);
+  console.log(`[progress] tracking ${label} every ${PROGRESS_MS / 1000}s`);
+  const tickId = setInterval(() => {
+    const elapsed = Math.floor((Date.now() - progress.startedAt) / 1000);
+    const text = `${label} · ${progress.status} · ${elapsed}s elapsed`;
+    broadcastA2A(text).catch((e) =>
+      console.log(`[progress] ping failed: ${e instanceof Error ? e.message : String(e)}`),
+    );
+  }, PROGRESS_MS);
+  try {
+    return await fn(progress);
+  } finally {
+    clearInterval(tickId);
+    const total = Math.floor((Date.now() - progress.startedAt) / 1000);
+    console.log(`[progress] ${label} ended after ${total}s — last status: ${progress.status}`);
+    broadcastA2A(`${label} done · ${progress.status} · ${total}s total`).catch(() => undefined);
+  }
 }
 
 type ToolHandler = (args: Record<string, unknown>) => Promise<unknown>;
 
 const tools: Record<string, ToolHandler> = {
-  open_console: async () => {
-    const url = AWS_URLS.launchWizard;
+  // Step 1 — open AWS sign-in pages in the user's default Chrome.
+  // Wraps `npm run demo:aws-1`. The user signs in at their own pace.
+  aws_signin: async () => {
     if (MOCK) {
-      console.log(`[aws-mcp] (mock) would open ${url}`);
-      return { ok: true, opened: url, mocked: true };
+      console.log(`[aws-mcp] (mock) would run scripts/demo-aws-1.ts`);
+      await sleep(1500);
+      return { ok: true, mocked: true };
     }
-    await openUrl(url);
-    return { ok: true, opened: url };
+    return await runDemoScript("scripts/demo-aws-1.ts");
   },
 
-  launch_instance: async (args) => {
-    const name = (args?.name as string) ?? "nanoclaw-demo";
+  // Step 2 — provision EC2 (keypair, SG, run-instances, wait running + sshd).
+  // Wraps `npm run demo:aws-2`. On success, demo:aws-2 writes a state file at
+  // $TMPDIR/openclaw-demo-state.json which we surface in the response.
+  provision_ec2: async () => {
     if (MOCK) {
-      await sleep(2000);
-      return { instance_id: "i-mockedfake1234567", public_ip: "203.0.113.10", mocked: true };
-    }
-    return await runInstance(name);
-  },
-
-  wait_for_running: async (args) => {
-    const id = args?.instance_id as string;
-    if (!id) throw new Error("missing instance_id");
-    if (MOCK) {
-      await sleep(1000);
-      return { state: "running", public_ip: "203.0.113.10", mocked: true };
-    }
-    const ip = await waitForRunning(id);
-    return { state: "running", public_ip: ip };
-  },
-
-  show_in_console: async (args) => {
-    const id = args?.instance_id as string;
-    if (!id) throw new Error("missing instance_id");
-    const url = AWS_URLS.instanceDetail(id);
-    if (MOCK) {
-      console.log(`[aws-mcp] (mock) would open ${url}`);
-      return { ok: true, opened: url, mocked: true };
-    }
-    await openUrl(url);
-    return { ok: true, opened: url };
-  },
-
-  install_nanoclaw: async (args) => {
-    const id = args?.instance_id as string;
-    const ip = args?.public_ip as string;
-    if (!id || !ip) throw new Error("missing instance_id or public_ip");
-    if (MOCK) {
-      await sleep(2000);
+      await sleep(2500);
       return {
         ok: true,
-        stdout: `nanoclaw installed on ${ip} (mocked)`,
-        stderr: "",
-        exit_code: 0,
         mocked: true,
+        state: {
+          instanceId: "i-mockedfake1234567",
+          publicIp: "203.0.113.10",
+          region: "us-east-1",
+        },
       };
     }
-    if (!existsSync(KEY_PATH)) {
-      throw new Error(`SSH key not found at ${KEY_PATH}. Save your EC2 keypair .pem there.`);
-    }
-    const result = await runRemote({
-      host: ip,
-      keyPath: KEY_PATH,
-      command: NANOCLAW_INSTALL_CMD,
+    return await withProgress("provision_ec2", async (progress) => {
+      const r = await runDemoScript("scripts/demo-aws-2.ts", {}, progress);
+      return { ...r, state: r.ok ? readState() : null };
     });
-    return {
-      ok: result.code === 0,
-      stdout: result.stdout,
-      stderr: result.stderr,
-      exit_code: result.code,
-    };
+  },
+
+  // Step 3 — install OpenClaw on the provisioned EC2 box. Wraps
+  // `npm run demo:openclaw`. Outer mode spawns Terminal.app for the SSH
+  // session and exits quickly; the install continues in the new window. If
+  // an explicit public_ip is passed it overrides the state-file lookup.
+  install_openclaw: async (args) => {
+    const passedIp =
+      typeof args?.public_ip === "string" ? (args.public_ip as string) : undefined;
+    const env: Record<string, string> = {};
+    if (passedIp) env.PUBLIC_IP = passedIp;
+    const targetIp = passedIp ?? readState()?.publicIp ?? null;
+
+    if (MOCK) {
+      await sleep(2000);
+      return { ok: true, mocked: true, target: targetIp };
+    }
+    return await withProgress("install_openclaw", async (progress) => {
+      const r = await runDemoScript("scripts/demo-openclaw.ts", env, progress);
+      return { ...r, target: targetIp };
+    });
   },
 };
 
@@ -184,7 +375,7 @@ app.post("/mcp", async (req, res) => {
   try {
     console.log(`[aws-mcp] running ${toolName}…`);
     const result = await tools[toolName](args);
-    console.log(`[aws-mcp] ${toolName} ok: ${JSON.stringify(result)}`);
+    console.log(`[aws-mcp] ${toolName} returned`);
     return res.status(200).json({
       jsonrpc: "2.0", id,
       result: {

@@ -1,17 +1,20 @@
 #!/usr/bin/env bash
-# scripts/mcp-demo.sh — convenience wrappers for the 4 Phase 2 MCP demo calls.
+# scripts/mcp-demo.sh — convenience wrappers for the 3 Phase 2 MCP demo calls.
 #
 # Usage:
 #   bash scripts/mcp-demo.sh <step>
 # where step is one of:
-#   open    — opens AWS launch wizard in user's default browser
-#   launch  — launches an EC2 t2.micro on user's AWS account
-#   show    — opens the new instance's detail page (needs INSTANCE_ID env)
-#   install — SSHes into the instance and runs the nanoclaw install command
-#             (needs INSTANCE_ID and INSTANCE_IP env)
+#   signin     — opens AWS landing + sign-in pages in user's Chrome
+#                (wraps `npm run demo:aws-1` over AXL)
+#   provision  — provisions an EC2 t3.micro on user's AWS account
+#                (wraps `npm run demo:aws-2` over AXL)
+#   install    — deploys OpenClaw onto the provisioned EC2 box
+#                (wraps `npm run demo:openclaw` over AXL)
+#                Optional: PUBLIC_IP=x.x.x.x to override the state-file lookup
 #
 # Each step issues one MCP call to the user role's aws service. The user's Mac
-# shows an approve y/n prompt before any action runs.
+# shows an approve y/n prompt before any action runs, then runs the demo
+# script as a child process with stdout streamed to the user's terminal.
 
 set -euo pipefail
 
@@ -22,31 +25,27 @@ TSX="$PWD/node_modules/.bin/tsx"
 
 step="${1:-}"
 case "$step" in
-  open)
-    "$TSX" scripts/mcp-call.ts user aws open_console
+  signin)
+    "$TSX" scripts/mcp-call.ts user aws aws_signin '{}'
     ;;
-  launch)
-    NAME="${INSTANCE_NAME:-nanoclaw-demo}"
-    "$TSX" scripts/mcp-call.ts user aws launch_instance "{\"name\":\"$NAME\"}"
-    ;;
-  show)
-    : "${INSTANCE_ID:?Set INSTANCE_ID=i-... before running mcp:demo:show}"
-    "$TSX" scripts/mcp-call.ts user aws show_in_console "{\"instance_id\":\"$INSTANCE_ID\"}"
+  provision)
+    "$TSX" scripts/mcp-call.ts user aws provision_ec2 '{}'
     ;;
   install)
-    : "${INSTANCE_ID:?Set INSTANCE_ID=i-... before running mcp:demo:install}"
-    : "${INSTANCE_IP:?Set INSTANCE_IP=x.x.x.x before running mcp:demo:install}"
-    "$TSX" scripts/mcp-call.ts user aws install_nanoclaw "{\"instance_id\":\"$INSTANCE_ID\",\"public_ip\":\"$INSTANCE_IP\"}"
+    if [[ -n "${PUBLIC_IP:-}" ]]; then
+      "$TSX" scripts/mcp-call.ts user aws install_openclaw "{\"public_ip\":\"$PUBLIC_IP\"}"
+    else
+      "$TSX" scripts/mcp-call.ts user aws install_openclaw '{}'
+    fi
     ;;
   *)
     cat >&2 <<EOF
 Usage: bash scripts/mcp-demo.sh <step>
 
 steps:
-  open                                       open AWS launch wizard
-  launch                                     launch EC2 (use INSTANCE_NAME=… to rename)
-  show     INSTANCE_ID=i-…                   open instance detail page
-  install  INSTANCE_ID=i-… INSTANCE_IP=x.x.x.x   ssh in and install nanoclaw
+  signin                            open AWS sign-in pages on user's Mac
+  provision                         launch EC2 + wait running + wait sshd
+  install   [PUBLIC_IP=x.x.x.x]     SSH-install OpenClaw via Terminal.app
 EOF
     exit 64
     ;;

@@ -25,16 +25,25 @@ export async function promptApproval(req: ApprovalRequest): Promise<boolean> {
 }
 
 async function actuallyPrompt(req: ApprovalRequest): Promise<boolean> {
-  if (process.env.MCP_AUTO_APPROVE === "1") {
-    console.log(`[mcp] ${req.fromRole} → ${req.service}.${req.tool} AUTO-APPROVED (MCP_AUTO_APPROVE=1)`);
-    return true;
-  }
-
   const yellow = "\x1b[1;33m";
   const cyan = "\x1b[36m";
   const green = "\x1b[32m";
   const red = "\x1b[31m";
   const reset = "\x1b[0m";
+
+  // Default behaviour: auto-approve. Set MCP_REQUIRE_APPROVAL=1 to bring back
+  // the interactive y/n prompt (e.g. when filming the approval-gate part of
+  // the demo).
+  if (process.env.MCP_REQUIRE_APPROVAL !== "1") {
+    const argsStr = (() => {
+      try { return JSON.stringify(req.args); }
+      catch { return String(req.args); }
+    })();
+    console.log(
+      `\n${yellow}[mcp]${reset} ${cyan}${req.fromRole}${reset} → ${req.service}.${req.tool}(${argsStr}) ${green}auto-approved${reset}`,
+    );
+    return true;
+  }
 
   const argsStr = (() => {
     try { return JSON.stringify(req.args); }

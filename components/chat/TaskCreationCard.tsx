@@ -251,12 +251,6 @@ export function TaskCreationCard({
                 {fmtEth(breakdown.specialistsCost)} USDC
               </span>
             </div>
-            <div className="flex items-center justify-between">
-              <span>Speed boost × {speedLevel}</span>
-              <span className="font-mono tabular-nums text-ink">
-                +{fmtEth(breakdown.speedCost)} USDC
-              </span>
-            </div>
             {isSwarm && (
               <div className="flex items-center justify-between">
                 <span>Swarm mode</span>
@@ -265,6 +259,12 @@ export function TaskCreationCard({
                 </span>
               </div>
             )}
+            <div className="flex items-center justify-between">
+              <span>Speed boost × {speedLevel}</span>
+              <span className="font-mono tabular-nums text-ink">
+                +{fmtEth(breakdown.speedCost)} USDC
+              </span>
+            </div>
             <div className="border-t border-border mt-1.5 pt-2 flex items-center justify-between">
               <span className="text-[13px] font-medium text-ink">Total</span>
               <span className="text-[16px] font-mono font-semibold text-ink tabular-nums">
@@ -390,10 +390,17 @@ function BoxedSlider({
       </div>
       <div className="rounded-md border border-border bg-surface-2 px-3 py-2.5 grid gap-2">
         <div className="flex items-center justify-between gap-2">
-          <span className="text-[18px] font-mono font-semibold text-ink tabular-nums leading-none">
-            {value}
-          </span>
-          <div className="flex items-center gap-1">
+          <div className="flex items-baseline gap-2 min-w-0">
+            <span className="text-[18px] font-mono font-semibold text-ink tabular-nums leading-none shrink-0">
+              {value}
+            </span>
+            {hint && (
+              <span className="text-[11px] text-ink-3 leading-tight truncate">
+                {hint}
+              </span>
+            )}
+          </div>
+          <div className="flex items-center gap-1 shrink-0">
             <StepButton
               symbol="−"
               ariaLabel={`Decrease ${label}`}
@@ -422,7 +429,6 @@ function BoxedSlider({
           <span>{minLabel}</span>
           <span>{maxLabel}</span>
         </div>
-        {hint && <p className="text-[10.5px] text-ink-3 leading-tight">{hint}</p>}
       </div>
     </div>
   );

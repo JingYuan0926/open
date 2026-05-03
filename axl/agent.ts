@@ -79,6 +79,21 @@ function nowIso(): string {
   return new Date().toISOString();
 }
 
+// In-memory ring of recent inbound A2A messages, exposed via GET /messages
+// so a local mcp-call.ts can subscribe to live cross-machine chatter while
+// it waits on a long MCP response. Pure UI plumbing.
+interface RecentMessage {
+  seq: number;
+  ts: string;
+  fromRole: string;
+  text: string;
+  isCc: boolean;
+  isProgress: boolean;
+}
+const recent: RecentMessage[] = [];
+let nextSeq = 1;
+const MAX_RECENT = 200;
+
 class RoleAwareExecutor implements AgentExecutor {
   async execute(ctx: RequestContext, bus: ExecutionEventBus): Promise<void> {
     const input = ctx.userMessage.parts
@@ -90,7 +105,18 @@ class RoleAwareExecutor implements AgentExecutor {
     const meta = (ctx.userMessage.metadata ?? {}) as Record<string, unknown>;
     const fromRole = typeof meta.fromRole === "string" ? meta.fromRole : "?";
     const isCc = meta.cc === true;
+    const isProgress = meta.progress === true;
     const ccTag = isCc ? " (cc)" : "";
+
+    recent.push({
+      seq: nextSeq++,
+      ts: nowIso(),
+      fromRole,
+      text: input,
+      isCc,
+      isProgress,
+    });
+    while (recent.length > MAX_RECENT) recent.shift();
 
     // Pretty log line with sender attribution + timestamp.
     const dim = "\x1b[2m";
@@ -135,6 +161,15 @@ app.use(
   "/.well-known/agent-card.json",
   agentCardHandler({ agentCardProvider: requestHandler })
 );
+// /messages — live tail of inbound A2A messages, used by mcp-call.ts to
+// print remote progress + chatter while waiting on a long MCP response.
+// `?since=<seq>` returns only messages newer than that cursor.
+app.get("/messages", (req, res) => {
+  const sinceRaw = (req.query.since as string) ?? "0";
+  const since = parseInt(sinceRaw, 10) || 0;
+  const messages = recent.filter((m) => m.seq > since);
+  res.json({ messages, latestSeq: nextSeq - 1, role: ROLE });
+});
 app.use(
   "/",
   jsonRpcHandler({
