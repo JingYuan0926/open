@@ -2,14 +2,14 @@ import type { NextApiRequest, NextApiResponse } from "next";
 import { ethers } from "ethers";
 
 // /api/x402/pay-specialists — settles per-call USDC royalties to each
-// specialist over the x402 protocol on Base Sepolia, then prints the
-// settlement transcript to the Next.js dev server stdout. Triggered
-// from /landing's Pay & Post button.
+// specialist over the x402 protocol on Sepolia (same chain as ENS), then
+// prints the settlement transcript to the Next.js dev server stdout.
+// Triggered from /landing's Pay & Post button.
 //
-// Real on-chain action: USDC.transfer(payTo, amount) on Base Sepolia
-// signed by 0G_PRIVATE_KEY, one tx per specialist. Total per click =
-// 0.001 USDC × 2 specialists = 0.002 USDC. Plus the Sepolia ENS task
-// post that runs in parallel via wagmi on the user's wallet.
+// Real on-chain action: USDC.transfer(payTo, amount) on Sepolia signed
+// by 0G_PRIVATE_KEY, one tx per specialist. Total per click = 0.001
+// USDC × 2 specialists = 0.002 USDC. Plus the Sepolia ENS task post
+// that runs in parallel via wagmi on the user's wallet.
 
 const SPECIALISTS = [
     {
@@ -26,12 +26,14 @@ const SPECIALISTS = [
     },
 ];
 
-const BASE_SEPOLIA_RPC =
-    process.env.BASE_SEPOLIA_RPC_URL ?? "https://sepolia.base.org";
-const USDC_ADDRESS = "0x036CbD53842c5426634e7929541eC2318f3dCF7e";
+const SEPOLIA_RPC =
+    process.env.SEPOLIA_RPC_URL ?? "https://ethereum-sepolia-rpc.publicnode.com";
+// Circle's USDC on Ethereum Sepolia (canonical testnet contract).
+const USDC_ADDRESS = "0x1c7D4B196Cb0C7B01d743Fbc6116a902379C7238";
 const USDC_DECIMALS = 6;
-const NETWORK = "base-sepolia (eip155:84532)";
+const NETWORK = "sepolia (eip155:11155111)";
 const SCHEME = "exact";
+const EXPLORER = "https://sepolia.etherscan.io/tx/";
 
 const ERC20_ABI = [
     "function transfer(address to, uint256 value) returns (bool)",
@@ -99,7 +101,7 @@ async function settleOne(
         console.log(`${tag()}   ${GREEN}✓${RESET} settled tx ${CYAN}${tx.hash}${RESET}`);
         console.log(`${tag()}     block:    ${receipt.blockNumber}`);
         console.log(`${tag()}     amount:   ${s.amount} USDC`);
-        console.log(`${tag()}     explorer: ${DIM}https://sepolia.basescan.org/tx/${tx.hash}${RESET}`);
+        console.log(`${tag()}     explorer: ${DIM}${EXPLORER}${tx.hash}${RESET}`);
         return { ok: true, txHash: tx.hash, block: receipt.blockNumber };
     } catch (err) {
         const msg = err instanceof Error ? err.message : String(err);
@@ -124,7 +126,7 @@ export default async function handler(
             .json({ error: "0G_PRIVATE_KEY not configured in .env" });
     }
 
-    const provider = new ethers.JsonRpcProvider(BASE_SEPOLIA_RPC);
+    const provider = new ethers.JsonRpcProvider(SEPOLIA_RPC);
     const signer = new ethers.Wallet(privateKey, provider);
 
     // Respond fast — keep the settlement loop running on the server in the
