@@ -215,7 +215,7 @@ export default function Home() {
       // still navigate
     }
     if (typeof window !== "undefined") {
-      localStorage.setItem("rh_onboarding_complete", "true");
+      sessionStorage.setItem("rh_chat_unlocked", "true");
     }
     router.push("/chat");
   }
