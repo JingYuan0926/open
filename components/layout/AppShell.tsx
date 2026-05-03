@@ -9,7 +9,7 @@ import { NAV_USER, NAV_HOST, HISTORY } from "@/lib/mock-data";
 // their pages exist.
 const NAV_ROUTES: Record<string, string> = {
   // user-mode
-  chat: "/landing",
+  chat: "/chat",
   tasks: "/marketplace",
   agents: "/agents",
   // host-mode
@@ -46,7 +46,7 @@ export function AppShell({ children, mode = "user", crumbs }: {
         currentNav={currentNav}
         onNav={onNav}
         history={HISTORY}
-        onNewChat={() => router.push("/landing")}
+        onNewChat={() => router.push("/chat")}
         mode={mode}
       />
       <div className="grid grid-rows-[52px_1fr] min-w-0 min-h-0">
