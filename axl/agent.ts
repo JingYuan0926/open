@@ -94,6 +94,128 @@ const recent: RecentMessage[] = [];
 let nextSeq = 1;
 const MAX_RECENT = 200;
 
+// ────────────────────────────────────────────────────────────────────────
+//  Demo dialogue: role-specific auto-replies that make the swarm feel
+//  alive. When agent-c sees agent-b kicking off provision, agent-c waits
+//  ~10s then broadcasts "hey i got the bot token, waiting on you" — which
+//  agent-b (also pattern-matching) replies to with "still provisioning,
+//  almost there". Each rule fires exactly once per matching inbound
+//  message; the auto-reply itself is tagged metadata.autoReply=true so it
+//  cannot trigger another rule.
+// ────────────────────────────────────────────────────────────────────────
+interface ChatRule {
+  /** Match metadata.kind ("starting" | "ack" | …) on the incoming message */
+  kind?: string;
+  /** Match metadata.tool — also accepts substring match on text body */
+  tool?: string;
+  /** Or match a regex against the text body */
+  pattern?: RegExp;
+  /** Only respond to messages from these sender roles */
+  from: string[];
+  /** Delay before broadcasting the reply (ms) */
+  delayMs: number;
+  /** Reply text to broadcast */
+  reply: string;
+}
+
+const CHAT_RULES: Record<string, ChatRule[]> = {
+  "agent-c": [
+    {
+      kind: "starting", tool: "aws_signin", from: ["agent-b"],
+      delayMs: 1500,
+      reply: "ok @agent-b, on it — fetching the Telegram bot ID + token while you log in",
+    },
+    {
+      kind: "starting", tool: "provision_ec2", from: ["agent-b"],
+      delayMs: 10_000,
+      reply: "hey @agent-b — got the bot token ready, waiting on you",
+    },
+    {
+      kind: "ack", tool: "provision_ec2", from: ["agent-b"],
+      delayMs: 2000,
+      reply: "got it — deploying OpenClaw onto the new EC2 box now",
+    },
+  ],
+  "agent-b": [
+    {
+      pattern: /got the bot token|got the token|waiting on you/i,
+      from: ["agent-c"],
+      delayMs: 2000,
+      reply: "still provisioning — almost there, will hand off once EC2 is up",
+    },
+    {
+      kind: "ack", tool: "install_openclaw", from: ["agent-c"],
+      delayMs: 1500,
+      reply: "nice — bot's live. @user the deploy is done.",
+    },
+  ],
+  "user": [],
+};
+
+function findMatchingRule(
+  myRole: string,
+  fromRole: string,
+  text: string,
+  meta: Record<string, unknown>,
+): ChatRule | null {
+  if (meta.autoReply === true) return null;     // never reply to a reply
+  const rules = CHAT_RULES[myRole];
+  if (!rules || rules.length === 0) return null;
+  for (const rule of rules) {
+    if (!rule.from.includes(fromRole)) continue;
+    if (rule.kind && meta.kind !== rule.kind) continue;
+    if (rule.tool) {
+      const t = typeof meta.tool === "string" ? meta.tool : "";
+      if (t !== rule.tool && !text.includes(rule.tool)) continue;
+    }
+    if (rule.pattern && !rule.pattern.test(text)) continue;
+    return rule;
+  }
+  return null;
+}
+
+interface RawPeer { apiPort?: number; pubkey?: string; }
+
+async function broadcastChat(text: string, fromRole: string): Promise<void> {
+  let peers: Record<string, RawPeer>;
+  try {
+    peers = JSON.parse(readFileSync(resolve("axl/peers.json"), "utf8")) as Record<string, RawPeer>;
+  } catch {
+    return;
+  }
+  const myEntry = peers[fromRole];
+  const myPort = myEntry?.apiPort ?? 9002;
+
+  const tasks: Promise<unknown>[] = [];
+  for (const [role, entry] of Object.entries(peers)) {
+    if (role === fromRole) continue;
+    if (!entry || typeof entry !== "object" || !entry.pubkey) continue;
+    const url = `http://127.0.0.1:${myPort}/a2a/${entry.pubkey}/`;
+    const body = {
+      jsonrpc: "2.0",
+      id: Date.now(),
+      method: "message/send",
+      params: {
+        message: {
+          kind: "message",
+          messageId: `chat-reply-${Date.now()}-${role}`,
+          role: "user",
+          parts: [{ kind: "text", text }],
+          metadata: { fromRole, autoReply: true, chat: true },
+        },
+      },
+    };
+    tasks.push(
+      fetch(url, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      }).catch(() => undefined),
+    );
+  }
+  await Promise.all(tasks);
+}
+
 class RoleAwareExecutor implements AgentExecutor {
   async execute(ctx: RequestContext, bus: ExecutionEventBus): Promise<void> {
     const input = ctx.userMessage.parts
@@ -126,6 +248,32 @@ class RoleAwareExecutor implements AgentExecutor {
     console.log(
       `${dim}${nowIso()}${reset} ${yellow}[${fromRole}${ccTag} → ${ROLE}]${reset} ${input}`
     );
+
+    // Demo dialogue: if a role-specific chat rule matches this inbound
+    // message, schedule a delayed broadcast back out so the swarm feels
+    // like a real conversation. Fire-and-forget; doesn't block the reply.
+    const rule = findMatchingRule(ROLE, fromRole, input, meta);
+    if (rule) {
+      console.log(
+        `${dim}${nowIso()}${reset} ${cyan}[chat-rule]${reset} matched ${ROLE} → reply in ${rule.delayMs}ms`,
+      );
+      setTimeout(() => {
+        // Push our own reply into our recent ring too, so a local
+        // mcp-call.ts polling /messages sees it consistently.
+        recent.push({
+          seq: nextSeq++,
+          ts: nowIso(),
+          fromRole: ROLE,
+          text: rule.reply,
+          isCc: false,
+          isProgress: false,
+        });
+        while (recent.length > MAX_RECENT) recent.shift();
+        broadcastChat(rule.reply, ROLE).catch((e) =>
+          console.log(`[chat-rule] broadcast failed: ${e instanceof Error ? e.message : String(e)}`),
+        );
+      }, rule.delayMs);
+    }
 
     // Publish a reply.
     let replyText: string;

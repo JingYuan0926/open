@@ -104,7 +104,8 @@ async function broadcastA2A(text: string, kind: "starting" | "ack"): Promise<voi
           messageId: `${kind}-${Date.now()}-${role}`,
           role: "user",
           parts: [{ kind: "text", text }],
-          metadata: { fromRole: myRole, broadcast: true, kind },
+          // tool is in metadata so agent.ts chat rules can match precisely.
+          metadata: { fromRole: myRole, broadcast: true, kind, tool, chat: true },
         },
       },
     };
@@ -117,6 +118,37 @@ async function broadcastA2A(text: string, kind: "starting" | "ack"): Promise<voi
     );
   }
   await Promise.all(tasks);
+}
+
+// Per-tool starting/ack flavour text. When a tool has special-case demo
+// narration (e.g. install ends with the live bot link), it goes here.
+const BOT_URL = "https://web.telegram.org/k/#@RightHandAI_NanoClawBot";
+
+function startingText(): string {
+  switch (tool) {
+    case "aws_signin":
+      return `[${myRole}] hey @agent-c — let me handle the AWS login. while I do, can you grab the Telegram bot ID + token?`;
+    case "provision_ec2":
+      return `[${myRole}] starting EC2 provision now — t3.micro on us-east-1`;
+    case "install_openclaw":
+      return `[${myRole}] starting OpenClaw deploy onto the new EC2 box`;
+    default:
+      return `[${myRole}] starting ${tool}(${JSON.stringify(toolArgs)})`;
+  }
+}
+
+function ackText(suffix = ""): string {
+  const tag = suffix ? ` ${suffix}` : "";
+  switch (tool) {
+    case "aws_signin":
+      return `[${myRole}] AWS signin done${tag}`;
+    case "provision_ec2":
+      return `[${myRole}] EC2 ready — handing off to @agent-c for the OpenClaw deploy${tag}`;
+    case "install_openclaw":
+      return `[${myRole}] deploy complete! @user the bot is live at ${BOT_URL}${tag}`;
+    default:
+      return `[${myRole}] ack ${tool}${tag}`;
+  }
 }
 
 async function fetchSince(since: number): Promise<{ messages: RemoteMessage[]; latestSeq: number } | null> {
@@ -140,9 +172,10 @@ function printRemote(m: RemoteMessage) {
   const baseline = await fetchSince(0);
   let cursor = baseline?.latestSeq ?? 0;
 
-  // Broadcast "starting" to every other peer + print on our own terminal.
-  console.log(`${dim}[chat]${reset} ${cyan}[${myRole} → all]${reset} starting ${tool}`);
-  await broadcastA2A(`[${myRole}] starting ${tool}(${JSON.stringify(toolArgs)})`, "starting");
+  // Broadcast "starting" — flavour text per tool — and echo on our own terminal.
+  const startMsg = startingText();
+  console.log(`${dim}[chat]${reset} ${cyan}${startMsg}${reset}`);
+  await broadcastA2A(startMsg, "starting");
 
   // Poll loop — runs concurrently with the MCP call. Stops when `done` is set.
   let done = false;
@@ -182,7 +215,7 @@ function printRemote(m: RemoteMessage) {
   // Now print the MCP response (or the network/HTTP error).
   if (networkError) {
     console.error(`\n${dim}[mcp:call]${reset} network error: ${networkError}`);
-    await broadcastA2A(`[${myRole}] ack ${tool} (network error)`, "ack");
+    await broadcastA2A(ackText("(network error)"), "ack");
     process.exit(2);
   }
   if (!res!.ok) {
@@ -190,7 +223,7 @@ function printRemote(m: RemoteMessage) {
     console.error(`\n${dim}[mcp:call]${reset} HTTP ${res!.status}: ${text}`);
     // Even on transport timeout, broadcast ack — the work likely succeeded
     // on the receiver's side; we just lost the response channel.
-    await broadcastA2A(`[${myRole}] ack ${tool} (transport ${res!.status})`, "ack");
+    await broadcastA2A(ackText(`(transport ${res!.status})`), "ack");
     process.exit(2);
   }
 
@@ -205,7 +238,7 @@ function printRemote(m: RemoteMessage) {
 
   if (body.error) {
     console.error(`\n${dim}[mcp:call]${reset} router error: ${body.error}`);
-    await broadcastA2A(`[${myRole}] ack ${tool} (router error)`, "ack");
+    await broadcastA2A(ackText("(router error)"), "ack");
     process.exit(2);
   }
 
@@ -217,7 +250,7 @@ function printRemote(m: RemoteMessage) {
 
   if (inner.error) {
     console.error(`\n${dim}[mcp:call]${reset} tool error: ${inner.error.message ?? JSON.stringify(inner.error)}`);
-    await broadcastA2A(`[${myRole}] ack ${tool} (tool error)`, "ack");
+    await broadcastA2A(ackText("(tool error)"), "ack");
     process.exit(2);
   }
 
@@ -226,11 +259,12 @@ function printRemote(m: RemoteMessage) {
     let parsed: unknown = content;
     try { parsed = JSON.parse(content); } catch { /* not JSON, that's fine */ }
     console.log(`\n${dim}[mcp:call] result:${reset}`, JSON.stringify(parsed, null, 2));
-    await broadcastA2A(`[${myRole}] ack ${tool}`, "ack");
-    console.log(`${dim}[chat]${reset} ${cyan}[${myRole} → all]${reset} ack ${tool}`);
+    const ack = ackText();
+    console.log(`${dim}[chat]${reset} ${cyan}${ack}${reset}`);
+    await broadcastA2A(ack, "ack");
     if (inner.result?.isError) process.exit(3);
   } else {
     console.log(`\n${dim}[mcp:call] full response:${reset}`, JSON.stringify(inner, null, 2));
-    await broadcastA2A(`[${myRole}] ack ${tool}`, "ack");
+    await broadcastA2A(ackText(), "ack");
   }
 })();
