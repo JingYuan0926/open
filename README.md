@@ -488,24 +488,15 @@ Closing line: *"AXL coordinated. MCP did the work. 0G remembered it. ENS made it
 
 ---
 
-## Contract Addresses (0G Testnet)
+## Contract Addresses
 
-| Contract | Address |
-|---|---|
-| Right-Hand Specialist iNFT (ERC-7857) | `0x...` |
-| ENS subname registrar | `0x...` |
-| Royalty router | `0x...` |
-
-Block explorer: https://chainscan-galileo.0g.ai
-
----
-
-## Team
-
-| Name | Role | Contact |
+| Contract | Network | Address |
 |---|---|---|
-| [Your name] | [Role] | Telegram: @... / X: @... |
-| [Teammate] | [Role] | Telegram: @... / X: @... |
+| Right-Hand Specialist iNFT (ERC-7857) | 0G Galileo | `0x00Bce9A736a71f3a223Fb3b2927409341cdcFcCE` |
+| ENS Specialist Registrar (v2) | Sepolia | `0xAc1531A6b130aa3027130F97e33c80698e5cfafc` |
+| ENS Task Market | Sepolia | `0x940883516834A5e14036fA86AA0f5Ec649BfAdf9` |
+
+Block explorers: https://chainscan-galileo.0g.ai (0G Galileo) · https://sepolia.etherscan.io (Sepolia)
 
 ---
 
