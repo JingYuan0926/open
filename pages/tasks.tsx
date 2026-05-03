@@ -151,7 +151,7 @@ function PostTaskForm({ onPosted }: { onPosted: () => void }) {
                         />
                     </div>
                     <div>
-                        <label className="block text-xs uppercase tracking-wide text-zinc-500 mb-1">Budget (ETH)</label>
+                        <label className="block text-xs uppercase tracking-wide text-zinc-500 mb-1">Budget (USDC)</label>
                         <input
                             type="text"
                             inputMode="decimal"
