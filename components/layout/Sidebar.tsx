@@ -12,12 +12,13 @@ export function Sidebar({ nav, currentNav, onNav, history, onNewChat, mode = "us
 }) {
   return (
     <aside className="border-r border-border bg-surface-2 flex flex-col min-h-0">
-      <div className="flex items-center gap-2.5 px-4 h-[52px] border-b border-border">
-        <div className="w-6 h-6 rounded-md bg-accent text-accent-fg grid place-items-center font-medium text-[13px] tracking-tight">R</div>
-        <div className="min-w-0 overflow-hidden">
-          <div className="font-medium text-[13.5px] tracking-tight whitespace-nowrap">Right-Hand</div>
-          <div className="text-[11px] text-ink-3">{mode === "host" ? "Host Console" : "Workspace"}</div>
-        </div>
+      <div className="flex items-center px-4 h-[52px] border-b border-border">
+        <img
+          src="/logoright.png"
+          alt="Right-Hand"
+          className="h-9 w-auto select-none"
+          draggable={false}
+        />
       </div>
 
       <div className="px-2.5 pt-3.5 pb-1.5">
