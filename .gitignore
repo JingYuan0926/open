@@ -45,6 +45,12 @@ yarn-error.log*
 # vercel
 .vercel
 
+# reference clone — never commit
+tee-reference/
+
+# per-machine chat session metadata (0G storage rootHashes are content-addressed; the index is local-only)
+data/chat-sessions.json
+
 # typescript
 *.tsbuildinfo
 next-env.d.ts

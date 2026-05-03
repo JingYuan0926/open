@@ -1,12 +1,11 @@
 import * as React from "react";
-import { Sidebar } from "@/components/layout/Sidebar";
+import { Sidebar, type SidebarHistoryItem } from "@/components/layout/Sidebar";
 import { TopBar } from "@/components/layout/TopBar";
 import { useRouter } from "next/router";
 import { NAV_USER, NAV_HOST, HISTORY } from "@/lib/mock-data";
 
 // Maps sidebar nav-item ids to actual page routes. Items without a route
-// (e.g. `connector`, `settings`, `host-invocations`) stay as no-ops until
-// their pages exist.
+// (e.g. `connector`, `settings`) stay as no-ops until their pages exist.
 const NAV_ROUTES: Record<string, string> = {
   // user-mode
   chat: "/chat",
@@ -15,10 +14,25 @@ const NAV_ROUTES: Record<string, string> = {
   // host-mode
   host: "/host",
   "host-agents": "/agents",
+  "host-tasks": "/marketplace",
 };
 
-export function AppShell({ children, mode = "user", crumbs }: {
-  children: React.ReactNode; mode?: "user" | "host"; crumbs: string[];
+export function AppShell({
+  children,
+  mode = "user",
+  crumbs,
+  history,
+  onNewChat,
+  onPickHistory,
+  onDeleteHistory,
+}: {
+  children: React.ReactNode;
+  mode?: "user" | "host";
+  crumbs: string[];
+  history?: SidebarHistoryItem[];
+  onNewChat?: () => void;
+  onPickHistory?: (id: string) => void;
+  onDeleteHistory?: (id: string) => void;
 }) {
   const router = useRouter();
   const nav = mode === "user" ? NAV_USER : NAV_HOST;

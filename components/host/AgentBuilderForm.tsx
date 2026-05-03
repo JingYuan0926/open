@@ -27,9 +27,7 @@ import {
   RIGHTHAND_INFT_ABI,
   RIGHTHAND_INFT_ADDRESS,
 } from "@/lib/righthand-inft-abi";
-
-const DEFAULT_AXL_PUBKEY = "0x" + "00".repeat(32);
-const DEFAULT_VERSION = "0.1.0";
+import { SKILL_CATALOG } from "@/lib/skills";
 
 function inftUrl(tokenId: string) {
   return `https://chainscan-galileo.0g.ai/nft/${RIGHTHAND_INFT_ADDRESS}/${tokenId}`;
@@ -83,8 +81,6 @@ export function AgentBuilderForm() {
   );
   const [price, setPrice] = React.useState("0.16");
   const [runtime, setRuntime] = React.useState("Node 20 · isolated VM");
-  const [axlPubkey, setAxlPubkey] = React.useState(DEFAULT_AXL_PUBKEY);
-  const [version, setVersion] = React.useState(DEFAULT_VERSION);
 
   // iNFT mint state — driven by user-signed wagmi calls below. The owner
   // signs the mint themselves on 0G Galileo with their own key.
@@ -179,18 +175,22 @@ export function AgentBuilderForm() {
 
   // Once the mint is confirmed and we have a tokenId, kick off the ENS
   // register on Sepolia. wagmi will switch chains for us on signature.
+  // Only skills/workspaceUri/price are user-meaningful; the other three
+  // resolver fields are written as empty strings (the contract still
+  // requires the 6-field struct shape). The iNFT linkage survives via
+  // workspaceUri's chainscan URL, which embeds the token id.
   React.useEffect(() => {
     if (mintStep !== "minted" || !mintTokenId || registerStep !== "idle") return;
     const records: SpecialistRecords = {
-      axlPubkey,
+      axlPubkey: "",
       skills: skill,
       workspaceUri: inftUrl(mintTokenId),
-      tokenId: mintTokenId,
+      tokenId: "",
       price,
-      version,
+      version: "",
     };
     register(slug, records);
-  }, [mintStep, mintTokenId, registerStep, axlPubkey, skill, price, version, slug, register]);
+  }, [mintStep, mintTokenId, registerStep, skill, price, slug, register]);
 
   const onPublish = async () => {
     if (!labelValid || !status.connectedAddress) return;
@@ -297,6 +297,36 @@ export function AgentBuilderForm() {
       </CardHeader>
       <div className="p-4 grid grid-cols-[1.4fr_1fr] gap-4 max-[1080px]:grid-cols-1">
         <div className="grid gap-3.5">
+          <div className="rounded-md border border-border bg-surface-2 p-3">
+            <div className="flex items-center gap-2 mb-2">
+              <Icon name="shield" size={13} className="text-ink-3" />
+              <span className="text-[12.5px] font-medium text-ink-2">
+                Required capabilities
+              </span>
+              <Badge variant="info">install before publishing</Badge>
+            </div>
+            <p className="text-[11.5px] text-ink-3 mb-2 leading-relaxed">
+              Your specialist&rsquo;s runtime needs every capability below
+              installed before it can answer calls. The skills/ directory ships
+              one manifest per capability.
+            </p>
+            <ul className="grid gap-1">
+              {SKILL_CATALOG.map((s) => (
+                <li
+                  key={s.id}
+                  className="grid grid-cols-[10px_1fr] gap-2 items-baseline text-[12px]"
+                >
+                  <span aria-hidden className="text-ink-4 leading-none">
+                    ·
+                  </span>
+                  <span>
+                    <span className="font-mono text-ink">{s.id}.md</span>
+                    <span className="text-ink-3"> — {s.tagline}</span>
+                  </span>
+                </li>
+              ))}
+            </ul>
+          </div>
           <Field
             label="Agent name"
             hint="Shown to users when this specialist is summoned. Slugified into the ENS label."
@@ -338,32 +368,6 @@ export function AgentBuilderForm() {
               onChange={(e) => setRuntime(e.target.value)}
             />
           </Field>
-
-          <Disclosure title="Advanced — on-chain text records" icon="settings">
-            <div className="grid gap-2.5">
-              <Field
-                label="axl_pubkey"
-                hint="32-byte ed25519 pubkey for AXL traffic. Default = zero bytes (placeholder)."
-              >
-                <Input
-                  value={axlPubkey}
-                  onChange={(e) => setAxlPubkey(e.target.value)}
-                  className="font-mono text-[12px]"
-                />
-              </Field>
-              <Field label="version" hint="semver, e.g. 0.1.0">
-                <Input
-                  value={version}
-                  onChange={(e) => setVersion(e.target.value)}
-                  className="font-mono text-[12px]"
-                />
-              </Field>
-              <div className="text-[11.5px] text-ink-3">
-                <code className="font-mono">0g_token_id</code> is set
-                automatically from the iNFT minted on publish.
-              </div>
-            </div>
-          </Disclosure>
         </div>
 
         <div className="grid gap-3 content-start">
@@ -389,14 +393,6 @@ export function AgentBuilderForm() {
             <div className="bg-surface-2 border border-dashed border-border-strong rounded-md p-3 font-mono text-[12px] text-ink-2 break-all">
               <div className="text-ink-4">{"// 0g_workspace_uri text record · points at the iNFT on chainscan-galileo"}</div>
               {workspaceUriPreview}
-            </div>
-          </Disclosure>
-          <Disclosure title="AXL public key" icon="key">
-            <div className="bg-surface-2 border border-dashed border-border-strong rounded-md p-3 font-mono text-[12px] text-ink-2 break-all">
-              <div className="text-ink-4">{"// Used for inter-agent traffic auth"}</div>
-              {axlPubkey.length > 26
-                ? `${axlPubkey.slice(0, 18)}…${axlPubkey.slice(-8)}`
-                : axlPubkey}
             </div>
           </Disclosure>
           <Disclosure
@@ -511,10 +507,10 @@ export function AgentBuilderForm() {
 
           <div className="text-[11.5px] text-ink-3">
             Publishing first mints an ERC-721 iNFT on 0G Galileo to your wallet
-            (server-signed, no chain switch), then registers the ENS subname
-            under {status.parentDomain} on Sepolia with the iNFT&rsquo;s token
-            id baked into <code className="font-mono">0g_token_id</code> — one
-            wallet signature on Sepolia.
+            (you sign the mint), then registers the ENS subname under{" "}
+            {status.parentDomain} on Sepolia with{" "}
+            <code className="font-mono">0g_workspace_uri</code> pointing at the
+            iNFT&rsquo;s chainscan URL — two wallet signatures total.
           </div>
         </div>
       </div>
