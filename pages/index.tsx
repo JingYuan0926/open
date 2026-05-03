@@ -63,9 +63,6 @@ const ZapIcon = (p: IconProps) => (
 const ArrowRightIcon = (p: IconProps) => (
   <Icon {...p}><path d="M5 12h14M12 5l7 7-7 7" /></Icon>
 );
-const PlayCircleIcon = (p: IconProps) => (
-  <Icon {...p}><circle cx="12" cy="12" r="10" /><path d="m10 8 6 4-6 4Z" /></Icon>
-);
 const SparkleIcon = (p: IconProps) => (
   <Icon {...p}><path d="M12 3v3M12 18v3M5.6 5.6l2.1 2.1M16.3 16.3l2.1 2.1M3 12h3M18 12h3M5.6 18.4l2.1-2.1M16.3 7.7l2.1-2.1" /></Icon>
 );
