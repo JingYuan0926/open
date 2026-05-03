@@ -52,6 +52,15 @@ body {
 }
 .pulse-ring { animation: pulseRing 1.4s ease-in-out infinite; }
 
+@keyframes flow-inward {
+  to { stroke-dashoffset: 2.8; }
+}
+@keyframes flow-outward {
+  to { stroke-dashoffset: -2.8; }
+}
+.flow-inward { animation: flow-inward 1.2s linear infinite; }
+.flow-outward { animation: flow-outward 1.2s linear infinite; }
+
 ::-webkit-scrollbar { width: 10px; height: 10px; }
 ::-webkit-scrollbar-thumb {
   background: rgba(0,0,0,0.12);
