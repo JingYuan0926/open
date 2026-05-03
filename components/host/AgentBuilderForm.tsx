@@ -17,9 +17,6 @@ import type { SpecialistRecords } from "@/lib/networkConfig";
 import { SPARKINFT_ADDRESS } from "@/lib/sparkinft-abi";
 import { SKILL_CATALOG } from "@/lib/skills";
 
-const DEFAULT_AXL_PUBKEY = "0x" + "00".repeat(32);
-const DEFAULT_VERSION = "0.1.0";
-
 function inftUrl(tokenId: string) {
   return `https://chainscan-galileo.0g.ai/nft/${SPARKINFT_ADDRESS}/${tokenId}`;
 }
@@ -69,8 +66,6 @@ export function AgentBuilderForm() {
   );
   const [price, setPrice] = React.useState("0.16");
   const [runtime, setRuntime] = React.useState("Node 20 · isolated VM");
-  const [axlPubkey, setAxlPubkey] = React.useState(DEFAULT_AXL_PUBKEY);
-  const [version, setVersion] = React.useState(DEFAULT_VERSION);
 
   // iNFT mint state — populated by /api/0g/mint-inft before ENS register.
   const [mintStep, setMintStep] = React.useState<MintStep>("idle");
@@ -148,16 +143,19 @@ export function AgentBuilderForm() {
       return;
     }
 
-    // Step 2: register the ENS subname on Sepolia. The 0g_workspace_uri
-    // text record now points at the freshly-minted iNFT on chainscan-galileo
-    // (BlockScout-style /token/<contract>/instance/<id>).
+    // Step 2: register the ENS subname on Sepolia. We only persist the
+    // user-meaningful records (skills, workspaceUri, price) — axlPubkey,
+    // tokenId, and version are written as empty strings since they're not
+    // surfaced in the form. The contract still requires the 6-field struct
+    // shape; empty strings are valid resolver text values. The iNFT linkage
+    // survives via workspaceUri's chainscan URL (which embeds the token id).
     const records: SpecialistRecords = {
-      axlPubkey,
+      axlPubkey: "",
       skills: skill,
       workspaceUri: inftUrl(tokenId),
-      tokenId,
+      tokenId: "",
       price,
-      version,
+      version: "",
     };
     register(slug, records);
   };
@@ -285,32 +283,6 @@ export function AgentBuilderForm() {
               onChange={(e) => setRuntime(e.target.value)}
             />
           </Field>
-
-          <Disclosure title="Advanced — on-chain text records" icon="settings">
-            <div className="grid gap-2.5">
-              <Field
-                label="axl_pubkey"
-                hint="32-byte ed25519 pubkey for AXL traffic. Default = zero bytes (placeholder)."
-              >
-                <Input
-                  value={axlPubkey}
-                  onChange={(e) => setAxlPubkey(e.target.value)}
-                  className="font-mono text-[12px]"
-                />
-              </Field>
-              <Field label="version" hint="semver, e.g. 0.1.0">
-                <Input
-                  value={version}
-                  onChange={(e) => setVersion(e.target.value)}
-                  className="font-mono text-[12px]"
-                />
-              </Field>
-              <div className="text-[11.5px] text-ink-3">
-                <code className="font-mono">0g_token_id</code> is set
-                automatically from the iNFT minted on publish.
-              </div>
-            </div>
-          </Disclosure>
         </div>
 
         <div className="grid gap-3 content-start">
@@ -336,14 +308,6 @@ export function AgentBuilderForm() {
             <div className="bg-surface-2 border border-dashed border-border-strong rounded-md p-3 font-mono text-[12px] text-ink-2 break-all">
               <div className="text-ink-4">{"// 0g_workspace_uri text record · points at the iNFT on chainscan-galileo"}</div>
               {workspaceUriPreview}
-            </div>
-          </Disclosure>
-          <Disclosure title="AXL public key" icon="key">
-            <div className="bg-surface-2 border border-dashed border-border-strong rounded-md p-3 font-mono text-[12px] text-ink-2 break-all">
-              <div className="text-ink-4">{"// Used for inter-agent traffic auth"}</div>
-              {axlPubkey.length > 26
-                ? `${axlPubkey.slice(0, 18)}…${axlPubkey.slice(-8)}`
-                : axlPubkey}
             </div>
           </Disclosure>
           <Disclosure
@@ -459,9 +423,9 @@ export function AgentBuilderForm() {
           <div className="text-[11.5px] text-ink-3">
             Publishing first mints an ERC-721 iNFT on 0G Galileo to your wallet
             (server-signed, no chain switch), then registers the ENS subname
-            under {status.parentDomain} on Sepolia with the iNFT&rsquo;s token
-            id baked into <code className="font-mono">0g_token_id</code> — one
-            wallet signature on Sepolia.
+            under {status.parentDomain} on Sepolia with{" "}
+            <code className="font-mono">0g_workspace_uri</code> pointing at the
+            iNFT&rsquo;s chainscan URL — one wallet signature on Sepolia.
           </div>
         </div>
       </div>

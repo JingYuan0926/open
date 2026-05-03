@@ -24,10 +24,6 @@ function shortAddr(a: string) {
   return a.length > 14 ? `${a.slice(0, 6)}…${a.slice(-4)}` : a;
 }
 
-function shortPubkey(a: string) {
-  return a.length > 18 ? `${a.slice(0, 8)}…${a.slice(-6)}` : a;
-}
-
 function toHostedAgent(s: AnySpecialist): HostedAgent {
   const skillsArr = s.records.skills
     .split(",")
@@ -51,10 +47,13 @@ function toHostedAgent(s: AnySpecialist): HostedAgent {
     earnings: "$0.00",
     owner: s.owner,
     ens: s.fullName,
-    axlPubkey: shortPubkey(s.records.axlPubkey || "—"),
+    // axlPubkey / inft / runtime are no longer persisted on the specialist —
+    // HostedAgent still requires the fields for the mock-data fallback path,
+    // so set them to "" and let the renderer skip empty values.
+    axlPubkey: "",
     storageUri: s.records.workspaceUri || "—",
-    inft: s.records.tokenId ? `iNFT #${s.records.tokenId}` : "—",
-    runtime: s.records.version ? `v${s.records.version}` : "—",
+    inft: "",
+    runtime: "",
     created: "on-chain",
   };
 }
@@ -244,10 +243,6 @@ export default function AgentDetailPage() {
                     {onChainSpecialist.owner}
                   </IdentityRow>
                 )}
-                <IdentityRow label="AXL pubkey" mono>
-                  {records?.axlPubkey || agent.axlPubkey}
-                  {!records?.axlPubkey && !onChainSpecialist && " · connected"}
-                </IdentityRow>
                 <IdentityRow label="0G workspace" mono>
                   {inftHref ? (
                     <a
@@ -260,23 +255,6 @@ export default function AgentDetailPage() {
                     </a>
                   ) : (
                     agent.storageUri
-                  )}
-                </IdentityRow>
-                <IdentityRow label="iNFT" mono>
-                  {records?.tokenId ? (
-                    <>
-                      #{records.tokenId} ·{" "}
-                      <a
-                        href={inftHref}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="underline hover:text-blue-700"
-                      >
-                        view on chainscan
-                      </a>
-                    </>
-                  ) : (
-                    `${agent.inft} · owner ${shortAddr(agent.owner)}`
                   )}
                 </IdentityRow>
                 <IdentityRow label="Skills">
@@ -295,7 +273,6 @@ export default function AgentDetailPage() {
                     <span className="text-ink-3 italic">none declared</span>
                   )}
                 </IdentityRow>
-                <IdentityRow label="Runtime">{agent.runtime}</IdentityRow>
               </div>
             </Card>
             <Card>
