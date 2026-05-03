@@ -205,6 +205,7 @@ export default function Home() {
   const [step2Done, setStep2Done] = useState(false);
   const [connecting, setConnecting] = useState(false);
   const [connectError, setConnectError] = useState<string | null>(null);
+  const [walletAddress, setWalletAddress] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
   function openModal() {
@@ -228,7 +229,10 @@ export default function Home() {
         return;
       }
       const accounts = await eth.request({ method: "eth_requestAccounts" });
-      if (accounts && accounts.length > 0) setStep1Done(true);
+      if (accounts && accounts.length > 0) {
+        setWalletAddress(accounts[0]);
+        setStep1Done(true);
+      }
     } catch (err) {
       setConnectError(err instanceof Error ? err.message : "Connection failed");
     } finally {
@@ -249,10 +253,14 @@ export default function Home() {
   }
 
   async function handleNext() {
-    if (busy || !step1Done || !step2Done) return;
+    if (busy || !step1Done || !step2Done || !walletAddress) return;
     setBusy(true);
     try {
-      await fetch("/api/clicks", { method: "POST" });
+      await fetch("/api/clicks", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ address: walletAddress }),
+      });
     } catch {
       // still navigate
     }
