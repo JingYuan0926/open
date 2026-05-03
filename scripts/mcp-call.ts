@@ -74,6 +74,11 @@ function roleColor(role: string): string {
   return magenta;
 }
 
+// Local speaker tag — every terminal sees its own role as "me".
+function speakerLabel(role: string): string {
+  return role === myRole ? "me" : role;
+}
+
 console.log(`${dim}[mcp:call]${reset} ${cyan}${myRole}${reset} → ${yellow}${targetRole}${reset}.${service}.${tool}(${JSON.stringify(toolArgs)})`);
 console.log(`${dim}[mcp:call] POST ${url}${reset}`);
 
@@ -140,18 +145,20 @@ async function broadcastA2A(text: string, kind: "starting" | "ack"): Promise<voi
 
 // Per-tool starting/ack flavour text. When a tool has special-case demo
 // narration (e.g. install ends with the live bot link), it goes here.
+// No role-name prefix in the body — the speaker tag is rendered per-terminal
+// as [me] for the local role and [<other>] for everyone else.
 const BOT_URL = "https://web.telegram.org/k/#@RightHandAI_NanoClawBot";
 
 function startingText(): string {
   switch (tool) {
     case "aws_signin":
-      return `[${myRole}] hey @agent-c — let me handle the AWS login. while I do, can you grab the Telegram bot ID + token?`;
+      return `hey @agent-c — let me handle the AWS login. while I do, can you grab the Telegram bot ID + token?`;
     case "provision_ec2":
-      return `[${myRole}] starting EC2 provision now — t3.micro on us-east-1`;
+      return `starting EC2 provision now — t3.micro on us-east-1`;
     case "install_openclaw":
-      return `[${myRole}] starting OpenClaw deploy onto the new EC2 box`;
+      return `starting OpenClaw deploy onto the new EC2 box`;
     default:
-      return `[${myRole}] starting ${tool}(${JSON.stringify(toolArgs)})`;
+      return `starting ${tool}(${JSON.stringify(toolArgs)})`;
   }
 }
 
@@ -159,13 +166,13 @@ function ackText(suffix = ""): string {
   const tag = suffix ? ` ${suffix}` : "";
   switch (tool) {
     case "aws_signin":
-      return `[${myRole}] AWS signin done${tag}`;
+      return `AWS signin done${tag}`;
     case "provision_ec2":
-      return `[${myRole}] EC2 ready — handing off to @agent-c for the OpenClaw deploy${tag}`;
+      return `EC2 ready — handing off to @agent-c for the OpenClaw deploy${tag}`;
     case "install_openclaw":
-      return `[${myRole}] deploy complete! @user the bot is live at ${BOT_URL}${tag}`;
+      return `deploy complete! @user the bot is live at ${BOT_URL}${tag}`;
     default:
-      return `[${myRole}] ack ${tool}${tag}`;
+      return `ack ${tool}${tag}`;
   }
 }
 
@@ -182,7 +189,7 @@ async function fetchSince(since: number): Promise<{ messages: RemoteMessage[]; l
 function printRemote(m: RemoteMessage) {
   const c = roleColor(m.fromRole);
   const tag = m.isProgress ? "📡" : m.isCc ? "cc" : "→";
-  console.log(`${dim}${m.ts.slice(11, 19)}${reset} ${c}[${m.fromRole}]${reset} ${tag} ${m.text}`);
+  console.log(`${dim}${m.ts.slice(11, 19)}${reset} ${c}[${speakerLabel(m.fromRole)}]${reset} ${tag} ${m.text}`);
 }
 
 (async () => {
@@ -192,7 +199,7 @@ function printRemote(m: RemoteMessage) {
 
   // Broadcast "starting" — flavour text per tool — and echo on our own terminal.
   const startMsg = startingText();
-  console.log(`${dim}[chat]${reset} ${cyan}${startMsg}${reset}`);
+  console.log(`${dim}[chat]${reset} ${cyan}[me]${reset} → ${startMsg}`);
   await broadcastA2A(startMsg, "starting");
 
   // Poll loop — runs concurrently with the MCP call. Stops when `done` is set.
@@ -278,7 +285,7 @@ function printRemote(m: RemoteMessage) {
     try { parsed = JSON.parse(content); } catch { /* not JSON, that's fine */ }
     console.log(`\n${dim}[mcp:call] result:${reset}`, JSON.stringify(parsed, null, 2));
     const ack = ackText();
-    console.log(`${dim}[chat]${reset} ${cyan}${ack}${reset}`);
+    console.log(`${dim}[chat]${reset} ${cyan}[me]${reset} → ${ack}`);
     await broadcastA2A(ack, "ack");
     if (inner.result?.isError) process.exit(3);
   } else {
