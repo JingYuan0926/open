@@ -8,6 +8,7 @@ import type { ModeId } from "@/types";
 
 type ChatItem =
   | { kind: "user"; id: string; content: string }
+  | { kind: "thinking"; id: string; prompt: string; mode: ModeId }
   | { kind: "draft"; id: string; prompt: string; mode: ModeId; postedLabel?: string }
   | { kind: "demo"; id: string; label: string };
 
@@ -18,25 +19,48 @@ const MODE_TO_MAX: Record<ModeId, number> = {
   deep: 5,
 };
 
+const THINKING_MS = 5000;
+
 export function ChatInterface() {
   const [input, setInput] = React.useState("");
   const mode: ModeId = "swarm";
   const [items, setItems] = React.useState<ChatItem[]>([]);
   const scrollRef = React.useRef<HTMLDivElement>(null);
+  const timersRef = React.useRef<Set<ReturnType<typeof setTimeout>>>(new Set());
 
   React.useEffect(() => {
     if (scrollRef.current) scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
   }, [items]);
 
+  React.useEffect(() => {
+    const timers = timersRef.current;
+    return () => {
+      timers.forEach((t) => clearTimeout(t));
+      timers.clear();
+    };
+  }, []);
+
   const submit = (prompt: string, m: ModeId) => {
     const trimmed = prompt.trim();
     if (!trimmed) return;
     const stamp = Date.now().toString(36);
+    const draftId = `d-${stamp}`;
     setItems((prev) => [
       ...prev,
       { kind: "user", id: `u-${stamp}`, content: trimmed },
-      { kind: "draft", id: `d-${stamp}`, prompt: trimmed, mode: m },
+      { kind: "thinking", id: draftId, prompt: trimmed, mode: m },
     ]);
+    const t = setTimeout(() => {
+      timersRef.current.delete(t);
+      setItems((prev) =>
+        prev.map((it) =>
+          it.id === draftId && it.kind === "thinking"
+            ? { kind: "draft", id: draftId, prompt: trimmed, mode: m }
+            : it,
+        ),
+      );
+    }, THINKING_MS);
+    timersRef.current.add(t);
   };
 
   const handleSubmit = () => {
@@ -77,6 +101,12 @@ export function ChatInterface() {
                   return (
                     <AssistantWrapper key={it.id} modeLabel={modeLabel}>
                       <DemoFlow taskLabel={it.label} />
+                    </AssistantWrapper>
+                  );
+                if (it.kind === "thinking")
+                  return (
+                    <AssistantWrapper key={it.id} modeLabel={modeLabel}>
+                      <ThinkingIndicator />
                     </AssistantWrapper>
                   );
                 return (
@@ -133,9 +163,9 @@ function AssistantDraft({
   return (
     <AssistantWrapper modeLabel={modeLabel}>
       <p className="mb-2.5">
-        I&rsquo;ll publish this on the ENS task marketplace so matching
-        specialists can sign on. Review the spec, edit anything, then post
-        it on Sepolia.
+        Based on your prompt, here&rsquo;s the plan. Tune the budget,
+        specialists, and deadline below — then post on Sepolia to invite
+        matching specialists.
       </p>
       <TaskCreationCard
         initialDescription={prompt}
@@ -144,6 +174,55 @@ function AssistantDraft({
         onPosted={({ label }) => onPosted(draftId, label)}
       />
     </AssistantWrapper>
+  );
+}
+
+function ThinkingIndicator() {
+  const steps = React.useMemo(
+    () => [
+      "Reading your prompt",
+      "Resolving specialists from ENS",
+      "Matching skills against the registry",
+      "Drafting the task spec",
+    ],
+    [],
+  );
+  const [active, setActive] = React.useState(0);
+
+  React.useEffect(() => {
+    const tick = THINKING_MS / steps.length;
+    const timers = steps.map((_, i) =>
+      setTimeout(() => setActive(i + 1), tick * (i + 1)),
+    );
+    return () => timers.forEach((t) => clearTimeout(t));
+  }, [steps]);
+
+  return (
+    <div className="grid gap-1.5 text-[13.5px]">
+      {steps.map((s, i) => {
+        const done = i < active;
+        const current = i === active;
+        return (
+          <div key={i} className="flex items-center gap-2.5">
+            <span
+              aria-hidden
+              className={[
+                "inline-block w-3 h-3 rounded-full shrink-0",
+                done
+                  ? "bg-emerald-500"
+                  : current
+                    ? "bg-accent pulse-ring"
+                    : "bg-surface-3 border border-border",
+              ].join(" ")}
+            />
+            <span className={done || current ? "text-ink" : "text-ink-3"}>
+              {s}
+              {current ? "…" : ""}
+            </span>
+          </div>
+        );
+      })}
+    </div>
   );
 }
 
