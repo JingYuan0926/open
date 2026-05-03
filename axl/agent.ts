@@ -81,7 +81,10 @@ function nowIso(): string {
 
 // Per-role colour scheme. Local role is always magenta (purple) — "me".
 // Other roles get fixed colours so the same role looks the same across
-// every terminal: user=green, agent-b=yellow, agent-c=blue.
+// every terminal: user=green, agent-b=yellow, agent-c=blue. "Bystander"
+// (cyan) is for messages directed between two OTHER roles that I just
+// happen to see — like overhearing cedric tell derek to provision while
+// I'm zhiwei. Tells the eye "this isn't addressed to me, I'm watching".
 const C = {
   reset: "\x1b[0m",
   dim: "\x1b[2m",
@@ -89,6 +92,7 @@ const C = {
   green: "\x1b[32m",       // user
   yellow: "\x1b[1;33m",    // agent-b
   blue: "\x1b[34m",        // agent-c
+  cyan: "\x1b[1;36m",      // bystander observation
   white: "\x1b[37m",
 };
 
@@ -278,15 +282,26 @@ class RoleAwareExecutor implements AgentExecutor {
     const isSelf = fromRole === ROLE;
     const ts = nowIso();
 
+    // Bystander = directed message between two OTHER roles that I just
+    // happen to see. Distinct colour so the eye reads "I'm overhearing
+    // this, not party to it".
+    const directedTarget = typeof meta.target === "string" ? meta.target : null;
+    const isBystander = !isSelf && directedTarget !== null && directedTarget !== ROLE;
+
     // Internal narration: local-only "[me] doing X" line. Skip the arrow
     // entirely — it's not a conversation, it's the AI's own monologue.
     if (isInternal) {
       console.log(`${C.dim}${ts}${C.reset} ${C.magenta}[me]${C.reset} ${input}`);
+    } else if (isBystander) {
+      // Observed dispatch between two other roles. Cyan, with the actual
+      // sender → target labels (no "me" anywhere in the line).
+      console.log(
+        `${C.dim}${ts}${C.reset} ${C.cyan}[${fromRole} → ${directedTarget}]${C.reset} ${input}`,
+      );
     } else {
       // Conversational line. Each role gets its own fixed colour; the
       // local role is always rendered as "me" in magenta. Directed
       // self-echoes ([me → <target>]) carry their target in metadata.
-      const directedTarget = typeof meta.target === "string" ? meta.target : null;
       const fromLabel = isSelf ? "me" : fromRole;
       const toLabel = isSelf ? (directedTarget ?? "all") : "me";
       const fromC = colorForRole(fromRole, ROLE);
@@ -297,9 +312,9 @@ class RoleAwareExecutor implements AgentExecutor {
 
     // Demo dialogue: if a role-specific chat rule matches this inbound
     // message, schedule a delayed broadcast back out so the swarm feels
-    // like a real conversation. Skip self-echoes (no self-replies) and
-    // internal narration (it's not addressed to anyone).
-    if (!isSelf && !isInternal) {
+    // like a real conversation. Skip self-echoes, internal narration,
+    // and bystander observations (none of those are addressed to me).
+    if (!isSelf && !isInternal && !isBystander) {
       const rule = findMatchingRule(ROLE, fromRole, input, meta);
       if (rule) {
         console.log(
