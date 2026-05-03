@@ -122,18 +122,20 @@ async function broadcastA2A(text: string, kind: "starting" | "ack"): Promise<voi
   await Promise.all(tasks);
 }
 
-// Per-tool starting/ack flavour text. Sent over A2A so other peers' axl:start
-// terminals show it; not echoed locally on this terminal.
+// Per-tool starting/ack flavour text. Terse and self-describing — each
+// role announces its OWN action, never tells another role what to do.
+// Collaborative narrative emerges from independent announcements, not
+// from one role directing others.
 function startingText(): string {
   switch (tool) {
     case "aws_signin":
-      return `hey @agent-c — let me handle the AWS login. while I do, can you grab the Telegram bot ID + token?`;
+      return `starting AWS sign-in flow`;
     case "provision_ec2":
-      return `AWS signin done. starting EC2 provision now — t3.micro on us-east-1`;
+      return `starting EC2 provision — t3.micro on us-east-1`;
     case "install_openclaw":
-      return `got it — handoff received. starting OpenClaw deploy onto the new EC2 box`;
+      return `starting OpenClaw deploy onto the EC2 box`;
     default:
-      return `starting ${tool}(${JSON.stringify(toolArgs)})`;
+      return `starting ${tool}`;
   }
 }
 
@@ -141,19 +143,60 @@ function ackText(suffix = ""): string {
   const tag = suffix ? ` ${suffix}` : "";
   switch (tool) {
     case "aws_signin":
-      return `browser is open on @user — sign in, then run mcp:demo:provision when you're ready${tag}`;
+      return `AWS sign-in browser ready${tag}`;
     case "provision_ec2":
-      return `EC2 ready — handing off to @agent-c for the OpenClaw deploy${tag}`;
+      return `EC2 provisioned and ready${tag}`;
     case "install_openclaw":
-      return `deploy complete! @user the Telegram bot page should be opening now${tag}`;
+      return `OpenClaw deploy complete — Telegram bot opening on user${tag}`;
     default:
-      return `ack ${tool}${tag}`;
+      return `${tool} done${tag}`;
+  }
+}
+
+// Local-only AI narration. Sent to OUR own agent.ts (port 9004) tagged
+// metadata.internal=true, so it shows up on this Mac's axl:start log as
+// "[me] doing X" in purple. Not broadcast to peers.
+const a2aPort = parseInt(process.env.A2A_PORT ?? "9004", 10);
+
+async function narrate(text: string): Promise<void> {
+  const url = `http://127.0.0.1:${a2aPort}/`;
+  const body = {
+    jsonrpc: "2.0",
+    id: Date.now(),
+    method: "message/send",
+    params: {
+      message: {
+        kind: "message",
+        messageId: `narrate-${Date.now()}`,
+        role: "user",
+        parts: [{ kind: "text", text }],
+        metadata: { fromRole: myRole, internal: true },
+      },
+    },
+  };
+  const ctl = new AbortController();
+  const t = setTimeout(() => ctl.abort(), 2000);
+  try {
+    await fetch(url, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+      signal: ctl.signal,
+    });
+  } catch {
+    // local agent.ts isn't running — silent
+  } finally {
+    clearTimeout(t);
   }
 }
 
 (async () => {
-  // Broadcast "starting" silently — the message lands on other peers'
-  // axl:start terminals via their agent.ts logs.
+  // Local AI monologue — shows in this Mac's axl:start as [me] in purple.
+  await narrate(`dispatching ${tool} call to ${targetRole} over AXL`);
+
+  // Broadcast "starting" silently — the message lands on every peer's
+  // axl:start terminal via agent.ts logs (including our own, looped
+  // back through local AXL → local agent.ts).
   await broadcastA2A(startingText(), "starting");
 
   // Send the MCP call.
@@ -215,13 +258,16 @@ function ackText(suffix = ""): string {
     const okFlag = (parsed as { ok?: boolean })?.ok;
     if (okFlag === false) {
       console.log(`${dim}[mcp:call]${reset} ${red}✗ done${reset}`);
+      await narrate(`${tool} returned with errors`);
     } else {
       console.log(`${dim}[mcp:call]${reset} ${green}✓ done${reset}`);
+      await narrate(`${tool} returned successfully`);
     }
     await broadcastA2A(ackText(), "ack");
     if (inner.result?.isError) process.exit(3);
   } else {
     console.log(`${dim}[mcp:call]${reset} ${green}✓ done${reset}`);
+    await narrate(`${tool} returned`);
     await broadcastA2A(ackText(), "ack");
   }
 })();
