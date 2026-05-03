@@ -264,7 +264,7 @@ function TaskCard({
                     <p className="mt-1 text-sm">{task.description}</p>
                 </div>
                 <div className="text-right shrink-0">
-                    <div className="text-base font-semibold">{formatEther(task.budget)} ETH</div>
+                    <div className="text-base font-semibold">{formatEther(task.budget)} USDC</div>
                     <div className="text-[10px] uppercase tracking-wider text-zinc-500">
                         budget locked
                     </div>
