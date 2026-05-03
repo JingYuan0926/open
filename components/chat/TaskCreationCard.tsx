@@ -214,62 +214,47 @@ export function TaskCreationCard({
           />
         </div>
 
-        <SliderRow
-          label="Budget"
-          value={`${fmtEth(budgetEth)} ETH`}
-          min={BUDGET_MIN}
-          max={BUDGET_MAX}
-          step={BUDGET_STEP}
-          raw={budgetEth}
-          onChange={setBudgetEth}
-          minLabel={`${fmtEth(BUDGET_MIN)} ETH`}
-          maxLabel={`${fmtEth(BUDGET_MAX)} ETH`}
-          disabled={isLocked}
-        />
+        <div className="grid grid-cols-2 gap-2.5">
+          <BoxedSlider
+            label="Specialists"
+            value={`${maxSpecialists}`}
+            min={SPECIALISTS_MIN}
+            max={SPECIALISTS_MAX}
+            step={1}
+            raw={maxSpecialists}
+            onChange={(v) => setMaxSpecialists(Math.round(v))}
+            minLabel={`${SPECIALISTS_MIN}`}
+            maxLabel={`${SPECIALISTS_MAX}`}
+            disabled={isLocked}
+          />
 
-        <SliderRow
-          label="Specialists"
-          value={`${maxSpecialists}`}
-          min={SPECIALISTS_MIN}
-          max={SPECIALISTS_MAX}
-          step={1}
-          raw={maxSpecialists}
-          onChange={(v) => setMaxSpecialists(Math.round(v))}
-          minLabel={`${SPECIALISTS_MIN}`}
-          maxLabel={`${SPECIALISTS_MAX}`}
-          disabled={isLocked}
-        />
+          <BoxedSlider
+            label="Deadline"
+            value={`${deadlineMinutes} min`}
+            min={DEADLINE_MIN}
+            max={DEADLINE_MAX}
+            step={DEADLINE_STEP}
+            raw={deadlineMinutes}
+            onChange={(v) => setDeadlineMinutes(Math.round(v))}
+            minLabel={`${DEADLINE_MIN} min`}
+            maxLabel={`${DEADLINE_MAX} min`}
+            disabled={isLocked}
+            hint={`Auto-cancels around ${deadlineLabel}`}
+          />
+        </div>
 
-        <SliderRow
-          label="Deadline"
-          value={`${deadlineMinutes} min`}
-          min={DEADLINE_MIN}
-          max={DEADLINE_MAX}
-          step={DEADLINE_STEP}
-          raw={deadlineMinutes}
-          onChange={(v) => setDeadlineMinutes(Math.round(v))}
-          minLabel={`${DEADLINE_MIN} min`}
-          maxLabel={`${DEADLINE_MAX} min`}
-          disabled={isLocked}
-          hint={`Auto-cancels around ${deadlineLabel}`}
-        />
-
-        <div className="grid grid-cols-2 gap-2.5 pt-1">
-          <div className="rounded-md border border-border bg-surface-2 px-3 py-2">
-            <div className="text-[10.5px] uppercase tracking-wide text-ink-3">
-              Total cost
-            </div>
-            <div className="text-[16px] font-mono font-semibold text-ink tabular-nums">
-              {fmtEth(budgetEth)} ETH
-            </div>
+        <div>
+          <div className="text-[11.5px] uppercase tracking-wide text-ink-3 mb-1.5">
+            Total cost
           </div>
-          <div className="rounded-md border border-border bg-surface-2 px-3 py-2">
-            <div className="text-[10.5px] uppercase tracking-wide text-ink-3">
-              Per specialist
-            </div>
-            <div className="text-[16px] font-mono font-semibold text-ink tabular-nums">
-              {fmtEth(perSpecialist)} ETH
-            </div>
+          <div className="rounded-md border border-border bg-surface-2 px-3.5 py-3 flex items-center justify-between">
+            <span className="text-[12.5px] text-ink-2">
+              {maxSpecialists} specialist{maxSpecialists === 1 ? "" : "s"} ·{" "}
+              {deadlineMinutes} min deadline
+            </span>
+            <span className="text-[16px] font-mono font-semibold text-ink tabular-nums">
+              {fmtEth(totalCostEth)} ETH
+            </span>
           </div>
         </div>
 
