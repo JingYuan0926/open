@@ -83,20 +83,20 @@ const DiagCard = ({ top, left, icon, title, subtitle, emphasis }: DiagCardProps)
     style={{ top, left, transform: "translate(-50%, -50%)" }}
   >
     <div
-      className={`bg-surface rounded-2xl px-5 py-4 border border-border text-center min-w-[160px] ${
+      className={`bg-surface rounded-2xl px-4 py-3.5 border border-border text-center min-w-[145px] ${
         emphasis ? "shadow-md" : "shadow-sm"
       }`}
     >
-      <div className="flex justify-center mb-2 text-ink">{icon}</div>
-      <div className={`font-semibold text-base ${emphasis ? "text-ink" : "text-ink"}`}>{title}</div>
-      <div className="text-xs text-ink-3 mt-1">{subtitle}</div>
+      <div className="flex justify-center mb-1.5 text-ink">{icon}</div>
+      <div className={`font-semibold text-sm ${emphasis ? "text-ink" : "text-ink"}`}>{title}</div>
+      <div className="text-2xs text-ink-3 mt-0.5">{subtitle}</div>
     </div>
   </div>
 );
 
 function OrchestratorDiagram() {
   return (
-    <div className="relative w-full max-w-[680px] aspect-square mx-auto">
+    <div className="relative w-full max-w-[620px] aspect-square mx-auto">
       <svg
         className="absolute inset-0 w-full h-full"
         viewBox="0 0 100 100"
@@ -114,7 +114,7 @@ function OrchestratorDiagram() {
         </g>
       </svg>
 
-      <DiagCard top="50%" left="50%" emphasis icon={<HandIcon size={36} />} title="Right Hand AI" subtitle="Orchestrator" />
+      <DiagCard top="50%" left="50%" emphasis icon={<HandIcon size={30} />} title="Right Hand AI" subtitle="Orchestrator" />
       <DiagCard top="16%" left="50%" icon={<SearchIcon />} title="Research AI" subtitle="Gathers information" />
       <DiagCard top="38%" left="20%" icon={<ListIcon />} title="Planner AI" subtitle="Breaks down the task" />
       <DiagCard top="38%" left="80%" icon={<PencilIcon />} title="Writer AI" subtitle="Creates content" />
@@ -123,12 +123,12 @@ function OrchestratorDiagram() {
       <DiagCard top="84%" left="50%" icon={<FileIcon />} title="Summarizer AI" subtitle="Summarizes the output" />
 
       <div className="absolute z-10" style={{ top: "50%", left: "115%", transform: "translate(-50%, -50%)" }}>
-        <div className="bg-surface rounded-2xl px-5 py-4 border border-border shadow-sm text-center min-w-[130px]">
-          <div className="flex justify-center mb-2 w-10 h-10 mx-auto rounded-full bg-ink text-white items-center">
-            <CheckIcon size={20} />
+        <div className="bg-surface rounded-2xl px-4 py-3.5 border border-border shadow-sm text-center min-w-[120px]">
+          <div className="flex justify-center mb-1.5 w-9 h-9 mx-auto rounded-full bg-ink text-white items-center">
+            <CheckIcon size={18} />
           </div>
-          <div className="font-semibold text-base">Task</div>
-          <div className="font-semibold text-base">Completed</div>
+          <div className="font-semibold text-sm">Task</div>
+          <div className="font-semibold text-sm">Completed</div>
         </div>
       </div>
     </div>
@@ -171,15 +171,15 @@ export default function Home() {
 
   return (
     <div className="min-h-screen bg-bg text-ink">
-      <section className="px-6 lg:px-12 pt-16 pb-24">
+      <section className="px-6 lg:px-12 pt-28 pb-24">
         <div className="max-w-7xl mx-auto grid lg:grid-cols-2 gap-12 items-center">
           <div className="lg:pl-8">
-            <span className="inline-flex items-center gap-2 px-3 py-1.5 bg-surface border border-border rounded-full text-xs text-ink-2">
+            <span className="inline-flex items-center gap-2 px-3.5 py-1.5 bg-surface border border-border rounded-full text-xs text-ink-2">
               <SparkleIcon size={14} />
               Multiple AI. One purpose.
             </span>
             <h1 className="mt-6 text-6xl lg:text-7xl font-bold tracking-tight">Right Hand AI</h1>
-            <p className="mt-6 text-3xl lg:text-4xl text-ink-3 leading-tight font-medium">
+            <p className="mt-6 text-3xl lg:text-[2.5rem] text-ink-3 leading-tight font-medium">
               Multiple AI agents.<br />
               Working together.<br />
               One goal achieved.
