@@ -252,8 +252,8 @@ export function TaskCreationCard({
               </span>
             </div>
             {isSwarm && (
-              <div className="flex items-center justify-between">
-                <span>Swarm mode</span>
+              <div className="flex items-center justify-between pl-3">
+                <span className="text-ink-3">— Swarm mode</span>
                 <span className="font-mono tabular-nums text-ink">
                   +{fmtEth(breakdown.swarmCost)} USDC
                 </span>
