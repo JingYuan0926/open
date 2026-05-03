@@ -1,13 +1,10 @@
 // Auto-generated from contracts/artifacts after Ignition deploy.
 // RightHandAIINFT deployed on 0G Galileo testnet (chainId 16602).
-// MockVerifier: 0xa5950bba23E450F15bbf7A2Fce56b28fcBeDbB6E
-//
-// IMPORTANT: this address points at the legacy SPARKiNFT deploy. After
-// renaming the contract on-chain, run the redeploy command in CLAUDE.md
-// (Phase 2a / Redeploy procedure) and replace the address below with
-// the new RightHandAIINFT instance.
+// Deployment id: righthand-inft-v1
+// MockVerifier: 0xA23d7Ae87Ae0BF1B9e01E3f4ccE0Ae5f1309645a
+// Owner / deployer: 0x9787cfF89D30bB6Ae87Aaad9B3a02E77B5caA8f1
 
-export const RIGHTHAND_INFT_ADDRESS = "0xe457A01ce326977Ed7A56a02a9cA8a9C4468074A" as `0x${string}`;
+export const RIGHTHAND_INFT_ADDRESS = "0x00Bce9A736a71f3a223Fb3b2927409341cdcFcCE" as `0x${string}`;
 
 export const RIGHTHAND_INFT_ABI = [
   {
