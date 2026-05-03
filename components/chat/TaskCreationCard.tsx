@@ -246,7 +246,7 @@ export function TaskCreationCard({
               {deadlineMinutes} min deadline
             </span>
             <span className="text-[16px] font-mono font-semibold text-ink tabular-nums">
-              {fmtEth(totalCostEth)} ETH
+              {fmtEth(totalCostEth)} USDC
             </span>
           </div>
         </div>
