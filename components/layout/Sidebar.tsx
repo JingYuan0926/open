@@ -16,7 +16,7 @@ export function Sidebar({ nav, currentNav, onNav, history, onNewChat, mode = "us
         <img
           src="/logoright123.png"
           alt="Right-Hand"
-          className="h-20 w-auto select-none"
+          className="h-14 w-auto select-none"
           draggable={false}
         />
       </div>
