@@ -179,51 +179,55 @@ function AssistantDraft({
   );
 }
 
-function ThinkingIndicator() {
-  const steps = React.useMemo(
-    () => [
-      "Reading your prompt",
-      "Resolving specialists from ENS",
-      "Matching skills against the registry",
-      "Drafting the task spec",
-    ],
-    [],
-  );
+function ThinkingIndicator({ prompt }: { prompt: string }) {
+  const steps = React.useMemo(() => {
+    const trimmed = prompt.trim();
+    const short = trimmed.length > 90 ? `${trimmed.slice(0, 87)}…` : trimmed;
+    return [
+      {
+        label: "Reading your prompt",
+        commentary: `User wants: "${short}". Parsing intent and required skills.`,
+      },
+      {
+        label: "Resolving specialists from ENS",
+        commentary: "Querying righthand.eth subnames for active specialist registrations.",
+      },
+      {
+        label: "Matching skills against the registry",
+        commentary: "Filtering candidates by skill tags, reputation, and per-call price.",
+      },
+      {
+        label: "Drafting the task spec",
+        commentary: "Composing description, deadline, and budget split for swarm mode.",
+      },
+    ];
+  }, [prompt]);
+
   const [active, setActive] = React.useState(0);
 
   React.useEffect(() => {
-    const tick = THINKING_MS / steps.length;
-    const timers = steps.map((_, i) =>
-      setTimeout(() => setActive(i + 1), tick * (i + 1)),
-    );
-    return () => timers.forEach((t) => clearTimeout(t));
-  }, [steps]);
+    if (active >= steps.length - 1) return;
+    const t = setTimeout(() => setActive((a) => a + 1), THINKING_STEP_MS);
+    return () => clearTimeout(t);
+  }, [active, steps.length]);
+
+  const current = steps[active];
 
   return (
-    <div className="grid gap-1.5 text-[13.5px]">
-      {steps.map((s, i) => {
-        const done = i < active;
-        const current = i === active;
-        return (
-          <div key={i} className="flex items-center gap-2.5">
-            <span
-              aria-hidden
-              className={[
-                "inline-block w-3 h-3 rounded-full shrink-0",
-                done
-                  ? "bg-emerald-500"
-                  : current
-                    ? "bg-accent pulse-ring"
-                    : "bg-surface-3 border border-border",
-              ].join(" ")}
-            />
-            <span className={done || current ? "text-ink" : "text-ink-3"}>
-              {s}
-              {current ? "…" : ""}
-            </span>
-          </div>
-        );
-      })}
+    <div className="grid gap-1.5 text-[13.5px] min-h-[44px]">
+      <div className="flex items-center gap-2 text-ink">
+        <span
+          aria-hidden
+          className="inline-block w-2.5 h-2.5 rounded-full bg-accent pulse-ring shrink-0"
+        />
+        <span className="font-medium">
+          {current.label}
+          <span className="text-ink-3">…</span>
+        </span>
+      </div>
+      <p className="text-[12.5px] text-ink-3 italic leading-snug pl-[18px]">
+        {current.commentary}
+      </p>
     </div>
   );
 }
