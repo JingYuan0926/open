@@ -7,8 +7,8 @@ import { ethers } from "ethers";
 // Triggered from /landing's Pay & Post button.
 //
 // Real on-chain action: USDC.transfer(payTo, amount) on Sepolia signed
-// by 0G_PRIVATE_KEY, one tx per specialist. Total per click = 0.001
-// USDC × 2 specialists = 0.002 USDC. Plus the Sepolia ENS task post
+// by 0G_PRIVATE_KEY, one tx per specialist. Total per click = 0.00285
+// USDC × 2 specialists = 0.0057 USDC. Plus the Sepolia ENS task post
 // that runs in parallel via wagmi on the user's wallet.
 
 const SPECIALISTS = [
@@ -16,13 +16,13 @@ const SPECIALISTS = [
         name: "AWS Provisioning Specialist",
         ens: "aws-provision.righthand.eth",
         payTo: "0xd8dA6BF26964aF9D7eEd9e03E53415D37aA96045",
-        amount: "0.001",
+        amount: "0.00285",
     },
     {
         name: "OpenClaw Deployment Specialist",
         ens: "openclaw-deploy.righthand.eth",
         payTo: "0x70997970C51812dc3A010C7d01b50e0d17dc79C8",
-        amount: "0.001",
+        amount: "0.00285",
     },
 ];
 
@@ -145,7 +145,7 @@ export default async function handler(
             results.push(r);
         }
         const settled = results.filter((r) => r.ok).length;
-        const total = SPECIALISTS.reduce((a, s) => a + Number(s.amount), 0).toFixed(3);
+        const total = SPECIALISTS.reduce((a, s) => a + Number(s.amount), 0).toFixed(4);
         console.log(``);
         if (settled === SPECIALISTS.length) {
             console.log(`${tag()} ${BOLD}${GREEN}━━ all royalties settled · ${total} USDC total ━━${RESET}`);
