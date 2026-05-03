@@ -248,7 +248,7 @@ export function Marketplace() {
       ) : open.length === 0 ? (
         <div className="border border-dashed border-border rounded-md px-4 py-10 text-center text-[13px] text-ink-3">
           No open tasks. Head to{" "}
-          <Link href="/landing" className="text-ink underline">
+          <Link href="/chat" className="text-ink underline">
             chat
           </Link>{" "}
           to post one.
