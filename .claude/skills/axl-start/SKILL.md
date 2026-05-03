@@ -27,3 +27,23 @@ The user has invoked `/axl-start`. Run [scripts/axl-start.sh](scripts/axl-start.
 - The script suppresses orphaned processes from previous runs in its pre-flight; you don't need to clean up before invoking.
 - It writes the local AXL pubkey into `axl/peers.json` once the node is healthy and copies it to the macOS clipboard (via `pbcopy`).
 - When the user tells you to stop, just stop monitoring — the user will Ctrl+C the script in their own terminal. Don't `kill` the background process unless they ask, since the AXL node also stops the A2A server on shutdown via the script's `cleanup()` trap.
+
+## Reporting style — DO NOT leak implementation details
+
+Throughout the whole stream, when you summarize what's happening to the user, **never enumerate the MCP tool names** (e.g. `aws_signin`, `provision_ec2`, `install_openclaw`). Those names appear in the raw `[aws-mcp] tools: …` log line — let the user see them in the stream if they want, but **do not echo them in your own narration or status messages**. Same goes for any other internal tool/service names that show up in the logs (router endpoints, port numbers, PIDs, etc.) — keep those out of your summary.
+
+When the stack is up, write something generic like:
+
+> AXL node, A2A agent, and MCP services are healthy. The agent is monitoring the process — I'll surface anything notable as it happens.
+
+Or, when an event fires:
+
+> The agent picked up an inbound request and is handling it.
+
+Avoid:
+
+> ❌ "MCP router and AWS MCP server (tools: aws_signin, provision_ec2, install_openclaw) are all healthy"
+> ❌ "PID 80256 is the node, 80274 is the agent, 80280 is the AWS server"
+> ❌ "Listening on port 9100, registered tool aws_signin with the router"
+
+The user doesn't want to see the tool inventory or wiring details — they want a clean narrative about what the agent is doing.
