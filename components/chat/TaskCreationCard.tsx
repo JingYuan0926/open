@@ -14,15 +14,9 @@ import {
   TASK_MARKET_ADDRESS,
 } from "@/lib/networkConfig";
 
-// Default deadline = 24h from now, formatted for <input type="datetime-local">.
-function default24h(): string {
-  const d = new Date(Date.now() + 24 * 60 * 60 * 1000);
-  const pad = (n: number) => String(n).padStart(2, "0");
-  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
-}
-
 // Light keyword routing — picks a few skill tags from the user's prompt so
-// the right specialists in the marketplace can match. Editable in the form.
+// the right specialists in the marketplace can match. Backend-only now;
+// not exposed in the form.
 export function suggestSkills(prompt: string): string {
   const p = prompt.toLowerCase();
   const tags: string[] = [];
@@ -41,6 +35,19 @@ export function suggestSkills(prompt: string): string {
 
 type Step = "editing" | "awaiting" | "confirming" | "posted" | "error";
 
+const BUDGET_MIN = 0.001;
+const BUDGET_MAX = 0.05;
+const BUDGET_STEP = 0.001;
+const DEADLINE_MIN = 5;
+const DEADLINE_MAX = 120;
+const DEADLINE_STEP = 5;
+const SPECIALISTS_MIN = 1;
+const SPECIALISTS_MAX = 5;
+
+function fmtEth(n: number): string {
+  return n.toFixed(3).replace(/\.?0+$/, "") || "0";
+}
+
 export function TaskCreationCard({
   initialDescription,
   initialSkills,
@@ -55,14 +62,15 @@ export function TaskCreationCard({
   const { address } = useAccount();
 
   const [description, setDescription] = React.useState(initialDescription);
-  const [skillTags, setSkillTags] = React.useState(
-    initialSkills ?? suggestSkills(initialDescription),
+  const skillTags = React.useMemo(
+    () => initialSkills ?? suggestSkills(initialDescription),
+    [initialSkills, initialDescription],
   );
-  const [deadline, setDeadline] = React.useState<string>(default24h);
+  const [budgetEth, setBudgetEth] = React.useState(0.005);
+  const [deadlineMinutes, setDeadlineMinutes] = React.useState(30);
   const [maxSpecialists, setMaxSpecialists] = React.useState(
-    String(initialMaxSpecialists),
+    Math.min(SPECIALISTS_MAX, Math.max(SPECIALISTS_MIN, initialMaxSpecialists)),
   );
-  const [budget, setBudget] = React.useState("0.001");
   const [validationError, setValidationError] = React.useState<string | null>(null);
 
   const {
@@ -133,25 +141,16 @@ export function TaskCreationCard({
       setValidationError("Description is required.");
       return;
     }
-    const ts = Math.floor(new Date(deadline).getTime() / 1000);
-    if (!Number.isFinite(ts) || ts <= Math.floor(Date.now() / 1000)) {
-      setValidationError("Deadline must be in the future.");
-      return;
-    }
+    const ts = Math.floor(Date.now() / 1000) + deadlineMinutes * 60;
     let budgetWei: bigint;
     try {
-      budgetWei = parseEther(budget);
+      budgetWei = parseEther(budgetEth.toString());
     } catch {
-      setValidationError("Invalid budget — must be a decimal in ETH.");
+      setValidationError("Invalid budget.");
       return;
     }
     if (budgetWei <= BigInt(0)) {
       setValidationError("Budget must be greater than zero.");
-      return;
-    }
-    const max = Number(maxSpecialists);
-    if (!Number.isInteger(max) || max < 1 || max > 255) {
-      setValidationError("Max specialists must be an integer 1–255.");
       return;
     }
 
@@ -159,7 +158,7 @@ export function TaskCreationCard({
       address: TASK_MARKET_ADDRESS,
       abi: TASK_MARKET_ABI,
       functionName: "postTask",
-      args: [description.trim(), skillTags.trim(), BigInt(ts), max],
+      args: [description.trim(), skillTags.trim(), BigInt(ts), maxSpecialists],
       value: budgetWei,
       chainId: ENS_CHAIN_ID,
     });
@@ -180,6 +179,13 @@ export function TaskCreationCard({
     }
   })();
 
+  const perSpecialist = budgetEth / maxSpecialists;
+  const deadlineAt = new Date(Date.now() + deadlineMinutes * 60 * 1000);
+  const deadlineLabel = deadlineAt.toLocaleTimeString([], {
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+
   return (
     <div className="my-2 border border-border-strong bg-white rounded-md overflow-hidden">
       <div className="flex items-center gap-2 px-3 py-2.5 border-b border-border text-[12px] font-medium text-ink-2 uppercase tracking-wider">
@@ -188,7 +194,7 @@ export function TaskCreationCard({
         <span className="ml-auto normal-case tracking-normal">{headerBadge}</span>
       </div>
 
-      <div className="p-3 grid gap-3">
+      <div className="p-3 grid gap-4">
         <div>
           <label className="block text-[11.5px] uppercase tracking-wide text-ink-3 mb-1">
             Description
@@ -202,54 +208,62 @@ export function TaskCreationCard({
           />
         </div>
 
-        <div className="grid grid-cols-2 gap-2.5">
-          <div>
-            <label className="block text-[11.5px] uppercase tracking-wide text-ink-3 mb-1">
-              Skill tags
-            </label>
-            <input
-              value={skillTags}
-              onChange={(e) => setSkillTags(e.target.value)}
-              disabled={isLocked}
-              className="w-full h-[34px] px-2.5 bg-white border border-border rounded-md text-[12.5px] font-mono text-ink focus:outline-none focus:border-accent focus:ring-2 focus:ring-accent/15 transition-colors disabled:bg-surface-2 disabled:text-ink-2"
-            />
-          </div>
-          <div>
-            <label className="block text-[11.5px] uppercase tracking-wide text-ink-3 mb-1">
-              Budget (ETH)
-            </label>
-            <input
-              value={budget}
-              onChange={(e) => setBudget(e.target.value)}
-              disabled={isLocked}
-              className="w-full h-[34px] px-2.5 bg-white border border-border rounded-md text-[12.5px] font-mono text-ink focus:outline-none focus:border-accent focus:ring-2 focus:ring-accent/15 transition-colors disabled:bg-surface-2 disabled:text-ink-2"
-            />
-          </div>
-        </div>
+        <SliderRow
+          label="Budget"
+          value={`${fmtEth(budgetEth)} ETH`}
+          min={BUDGET_MIN}
+          max={BUDGET_MAX}
+          step={BUDGET_STEP}
+          raw={budgetEth}
+          onChange={setBudgetEth}
+          minLabel={`${fmtEth(BUDGET_MIN)} ETH`}
+          maxLabel={`${fmtEth(BUDGET_MAX)} ETH`}
+          disabled={isLocked}
+        />
 
-        <div className="grid grid-cols-2 gap-2.5">
-          <div>
-            <label className="block text-[11.5px] uppercase tracking-wide text-ink-3 mb-1">
-              Deadline
-            </label>
-            <input
-              type="datetime-local"
-              value={deadline}
-              onChange={(e) => setDeadline(e.target.value)}
-              disabled={isLocked}
-              className="w-full h-[34px] px-2.5 bg-white border border-border rounded-md text-[12.5px] text-ink focus:outline-none focus:border-accent focus:ring-2 focus:ring-accent/15 transition-colors disabled:bg-surface-2 disabled:text-ink-2"
-            />
+        <SliderRow
+          label="Specialists"
+          value={`${maxSpecialists}`}
+          min={SPECIALISTS_MIN}
+          max={SPECIALISTS_MAX}
+          step={1}
+          raw={maxSpecialists}
+          onChange={(v) => setMaxSpecialists(Math.round(v))}
+          minLabel={`${SPECIALISTS_MIN}`}
+          maxLabel={`${SPECIALISTS_MAX}`}
+          disabled={isLocked}
+        />
+
+        <SliderRow
+          label="Deadline"
+          value={`${deadlineMinutes} min`}
+          min={DEADLINE_MIN}
+          max={DEADLINE_MAX}
+          step={DEADLINE_STEP}
+          raw={deadlineMinutes}
+          onChange={(v) => setDeadlineMinutes(Math.round(v))}
+          minLabel={`${DEADLINE_MIN} min`}
+          maxLabel={`${DEADLINE_MAX} min`}
+          disabled={isLocked}
+          hint={`Auto-cancels around ${deadlineLabel}`}
+        />
+
+        <div className="grid grid-cols-2 gap-2.5 pt-1">
+          <div className="rounded-md border border-border bg-surface-2 px-3 py-2">
+            <div className="text-[10.5px] uppercase tracking-wide text-ink-3">
+              Total cost
+            </div>
+            <div className="text-[16px] font-mono font-semibold text-ink tabular-nums">
+              {fmtEth(budgetEth)} ETH
+            </div>
           </div>
-          <div>
-            <label className="block text-[11.5px] uppercase tracking-wide text-ink-3 mb-1">
-              Max specialists
-            </label>
-            <input
-              value={maxSpecialists}
-              onChange={(e) => setMaxSpecialists(e.target.value)}
-              disabled={isLocked}
-              className="w-full h-[34px] px-2.5 bg-white border border-border rounded-md text-[12.5px] font-mono text-ink focus:outline-none focus:border-accent focus:ring-2 focus:ring-accent/15 transition-colors disabled:bg-surface-2 disabled:text-ink-2"
-            />
+          <div className="rounded-md border border-border bg-surface-2 px-3 py-2">
+            <div className="text-[10.5px] uppercase tracking-wide text-ink-3">
+              Per specialist
+            </div>
+            <div className="text-[16px] font-mono font-semibold text-ink tabular-nums">
+              {fmtEth(perSpecialist)} ETH
+            </div>
           </div>
         </div>
 
@@ -336,10 +350,63 @@ export function TaskCreationCard({
           Posts to <span className="font-mono">TaskMarket</span> on Sepolia. The
           contract escrows the budget, mints{" "}
           <span className="font-mono">task-&#123;id&#125;.{ENS_PARENT_DOMAIN}</span>,
-          and writes description / skills / budget / deadline / status as ENS
-          text records.
+          and writes description / budget / deadline / status as ENS text records.
         </div>
       </div>
+    </div>
+  );
+}
+
+function SliderRow({
+  label,
+  value,
+  min,
+  max,
+  step,
+  raw,
+  onChange,
+  minLabel,
+  maxLabel,
+  disabled,
+  hint,
+}: {
+  label: string;
+  value: string;
+  min: number;
+  max: number;
+  step: number;
+  raw: number;
+  onChange: (v: number) => void;
+  minLabel: string;
+  maxLabel: string;
+  disabled?: boolean;
+  hint?: string;
+}) {
+  return (
+    <div className="grid gap-1.5">
+      <div className="flex items-baseline justify-between">
+        <span className="text-[11.5px] uppercase tracking-wide text-ink-3">
+          {label}
+        </span>
+        <span className="text-[15px] font-mono font-semibold text-ink tabular-nums">
+          {value}
+        </span>
+      </div>
+      <input
+        type="range"
+        min={min}
+        max={max}
+        step={step}
+        value={raw}
+        onChange={(e) => onChange(Number(e.target.value))}
+        disabled={disabled}
+        className="w-full h-1.5 accent-accent cursor-pointer disabled:cursor-not-allowed disabled:opacity-50"
+      />
+      <div className="flex items-center justify-between text-[10.5px] text-ink-4 font-mono">
+        <span>{minLabel}</span>
+        <span>{maxLabel}</span>
+      </div>
+      {hint && <p className="text-[11px] text-ink-3 leading-tight">{hint}</p>}
     </div>
   );
 }
