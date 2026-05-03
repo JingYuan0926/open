@@ -1,4 +1,5 @@
 import { useState, type ReactNode } from "react";
+import { useRouter } from "next/router";
 
 type IconProps = { className?: string; size?: number; strokeWidth?: number };
 
@@ -156,6 +157,7 @@ const TrustLogo = ({ icon, name }: { icon: ReactNode; name: string }) => (
 );
 
 export default function Home() {
+  const router = useRouter();
   const [busy, setBusy] = useState(false);
 
   async function handleGetStarted() {
@@ -163,43 +165,15 @@ export default function Home() {
     setBusy(true);
     try {
       await fetch("/api/clicks", { method: "POST" });
-    } finally {
-      setBusy(false);
+    } catch {
+      // ignore — still navigate
     }
+    router.push("/landing");
   }
 
   return (
     <div className="min-h-screen bg-bg text-ink">
-      <header className="px-6 lg:px-12 py-6">
-        <div className="max-w-7xl mx-auto flex items-center justify-between">
-          <div className="flex items-center gap-2">
-            <HandIcon size={26} />
-            <span className="font-semibold text-base">Right Hand AI</span>
-          </div>
-          <nav className="hidden lg:flex items-center gap-9 text-sm text-ink-2">
-            <a href="#" className="hover:text-ink">Product</a>
-            <a href="#" className="hover:text-ink">How it Works</a>
-            <a href="#" className="hover:text-ink">Use Cases</a>
-            <a href="#" className="hover:text-ink">Pricing</a>
-            <a href="#" className="hover:text-ink">Docs</a>
-            <a href="#" className="hover:text-ink">About</a>
-          </nav>
-          <div className="flex items-center gap-2">
-            <button className="hidden sm:inline-flex px-4 py-2 text-sm font-medium bg-surface border border-border rounded-lg hover:bg-surface-2">
-              Sign in
-            </button>
-            <button
-              onClick={handleGetStarted}
-              disabled={busy}
-              className="px-4 py-2 text-sm font-medium bg-accent text-accent-fg rounded-lg hover:opacity-90 disabled:opacity-50"
-            >
-              Get Started
-            </button>
-          </div>
-        </div>
-      </header>
-
-      <section className="px-6 lg:px-12 pt-12 pb-24">
+      <section className="px-6 lg:px-12 pt-16 pb-24">
         <div className="max-w-7xl mx-auto grid lg:grid-cols-2 gap-12 items-center">
           <div>
             <span className="inline-flex items-center gap-2 px-3 py-1.5 bg-surface border border-border rounded-full text-xs text-ink-2">
@@ -223,10 +197,6 @@ export default function Home() {
               >
                 {busy ? "Starting…" : "Get Started"}
                 <ArrowRightIcon size={16} />
-              </button>
-              <button className="inline-flex items-center gap-2 px-6 py-3 bg-surface border border-border rounded-xl font-medium hover:bg-surface-2">
-                Watch Demo
-                <PlayCircleIcon size={18} />
               </button>
             </div>
             <div className="mt-7 flex flex-wrap items-center gap-x-6 gap-y-2 text-xs text-ink-3">
