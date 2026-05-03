@@ -162,11 +162,10 @@ const CHAT_RULES: Record<string, ChatRule[]> = {
       delayMs: 2000,
       reply: "still provisioning — almost there, will hand off once EC2 is up",
     },
-    {
-      kind: "ack", tool: "install_openclaw", from: ["agent-c"],
-      delayMs: 1500,
-      reply: "nice — bot's live. @user the deploy is done.",
-    },
+    // Note: ack:install_openclaw → "nice, bot's live" auto-reply removed.
+    // The truthful "deploy complete + bot live at <url>" announcement now
+    // comes from demo-openclaw.ts inner mode AFTER the SSH install +
+    // openUrl actually succeeded — not from a premature mcp-call ack.
   ],
   "user": [],
 };
