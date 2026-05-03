@@ -353,12 +353,6 @@ export function TaskCreationCard({
           )}
         </div>
 
-        <div className="text-[11px] text-ink-3">
-          Posts to <span className="font-mono">TaskMarket</span> on Sepolia. The
-          contract escrows the budget, mints{" "}
-          <span className="font-mono">task-&#123;id&#125;.{ENS_PARENT_DOMAIN}</span>,
-          and writes description / budget / deadline / status as ENS text records.
-        </div>
       </div>
     </div>
   );
