@@ -137,16 +137,35 @@ export function ChatInterface() {
 
 function UserBubble({ content }: { content: string }) {
   return (
-    <div className="flex gap-3.5 py-4 border-t border-border first:border-t-0">
-      <div className="w-7 h-7 rounded-md bg-gradient-to-br from-slate-500 to-slate-800 text-white grid place-items-center text-[12px] font-semibold shrink-0">
-        JK
-      </div>
-      <div className="flex-1 min-w-0 pt-0.5">
-        <div className="font-medium text-[13.5px] mb-1">You</div>
-        <p className="text-[14px] leading-relaxed">{content}</p>
+    <div className="flex justify-end py-3">
+      <div className="max-w-[75%] px-4 py-2.5 rounded-2xl bg-surface-3 text-ink text-[14px] leading-relaxed whitespace-pre-wrap break-words">
+        {content}
       </div>
     </div>
   );
+}
+
+function StreamingText({
+  text,
+  speed = 55,
+}: {
+  text: string;
+  speed?: number;
+}) {
+  const tokens = React.useMemo(() => text.split(/(\s+)/), [text]);
+  const [count, setCount] = React.useState(0);
+
+  React.useEffect(() => {
+    setCount(0);
+  }, [text]);
+
+  React.useEffect(() => {
+    if (count >= tokens.length) return;
+    const t = setTimeout(() => setCount((c) => c + 1), speed);
+    return () => clearTimeout(t);
+  }, [count, tokens.length, speed]);
+
+  return <>{tokens.slice(0, count).join("")}</>;
 }
 
 function AssistantDraft({
@@ -165,9 +184,7 @@ function AssistantDraft({
   return (
     <AssistantWrapper modeLabel={modeLabel}>
       <p className="mb-2.5">
-        Based on your prompt, here&rsquo;s the plan. Tune the budget,
-        specialists, and deadline below — then post on Sepolia to invite
-        matching specialists.
+        <StreamingText text="Based on your prompt, here's the plan. Tune the specialists and deadline below — then post on Sepolia to invite matching specialists." />
       </p>
       <TaskCreationCard
         initialDescription={prompt}
