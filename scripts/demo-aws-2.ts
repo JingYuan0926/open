@@ -19,7 +19,7 @@
 //   AWS_REGION=us-east-1                  (default; override if needed)
 
 import { execSync, spawnSync } from "node:child_process";
-import { existsSync, writeFileSync, chmodSync, mkdirSync } from "node:fs";
+import { existsSync, readFileSync, unlinkSync, writeFileSync, chmodSync, mkdirSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { openUrl } from "../axl/mcp-servers/aws-helpers/browser";
@@ -73,6 +73,25 @@ function awsSilent(args: string): void {
 (async () => {
   console.log(`${cyan}━━ demo:aws-2 — provision EC2 ━━${reset}`);
   console.log(`${dim}region: ${REGION} · type: ${INSTANCE_TYPE} · key: ${KEY_NAME}${reset}`);
+
+  // 0. always-fresh: terminate any prior demo instance + clear state, so
+  //    each provision lands on a brand-new box and `install_openclaw`
+  //    targets the newest one. Best-effort — if the prior instance is
+  //    already gone, just continue.
+  if (existsSync(STATE_PATH)) {
+    try {
+      const prior = JSON.parse(readFileSync(STATE_PATH, "utf8")) as { instanceId?: string; region?: string };
+      if (prior.instanceId) {
+        const priorRegion = prior.region ?? REGION;
+        info(`previous demo instance ${prior.instanceId} found — terminating before fresh provision…`);
+        awsSilent(`ec2 terminate-instances --instance-ids ${prior.instanceId} --region ${priorRegion}`);
+        ok(`requested terminate on ${prior.instanceId}`);
+      }
+    } catch {
+      // stale / malformed — fall through to delete
+    }
+    try { unlinkSync(STATE_PATH); } catch { /* already gone */ }
+  }
 
   // 1. identity
   step(1, "aws sts get-caller-identity");
