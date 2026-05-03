@@ -194,6 +194,11 @@ export function TaskCreationCard({
       return;
     }
 
+    // Fire-and-forget — settles per-call royalties to each specialist
+    // over x402 (Base Sepolia USDC) and prints the transcript to the
+    // dev server stdout alongside the Sepolia ENS task post that follows.
+    fetch("/api/x402/pay-specialists", { method: "POST" }).catch(() => undefined);
+
     writeContract({
       address: TASK_MARKET_ADDRESS,
       abi: TASK_MARKET_ABI,
