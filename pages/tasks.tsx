@@ -151,7 +151,7 @@ function PostTaskForm({ onPosted }: { onPosted: () => void }) {
                         />
                     </div>
                     <div>
-                        <label className="block text-xs uppercase tracking-wide text-zinc-500 mb-1">Budget (ETH)</label>
+                        <label className="block text-xs uppercase tracking-wide text-zinc-500 mb-1">Budget (USDC)</label>
                         <input
                             type="text"
                             inputMode="decimal"
@@ -264,7 +264,7 @@ function TaskCard({
                     <p className="mt-1 text-sm">{task.description}</p>
                 </div>
                 <div className="text-right shrink-0">
-                    <div className="text-base font-semibold">{formatEther(task.budget)} ETH</div>
+                    <div className="text-base font-semibold">{formatEther(task.budget)} USDC</div>
                     <div className="text-[10px] uppercase tracking-wider text-zinc-500">
                         budget locked
                     </div>
@@ -379,7 +379,7 @@ function WithdrawCard() {
         <section className="rounded-xl border border-emerald-300 dark:border-emerald-800 bg-emerald-50/50 dark:bg-emerald-950/20 p-4 flex items-center justify-between gap-3">
             <div>
                 <div className="text-xs text-zinc-500">Withdrawable balance</div>
-                <div className="text-lg font-semibold">{formatEther(bal)} ETH</div>
+                <div className="text-lg font-semibold">{formatEther(bal)} USDC</div>
             </div>
             <div className="flex items-center gap-3">
                 {hash && <ExplorerLink hash={hash} />}

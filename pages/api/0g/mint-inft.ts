@@ -1,6 +1,6 @@
 import type { NextApiRequest, NextApiResponse } from "next";
 import { ethers } from "ethers";
-import { SPARKINFT_ADDRESS, SPARKINFT_ABI } from "@/lib/sparkinft-abi";
+import { RIGHTHAND_INFT_ADDRESS, RIGHTHAND_INFT_ABI } from "@/lib/righthand-inft-abi";
 
 // Mints an iNFT on 0G Galileo (chainId 16602) to `to`. Server-signed with
 // 0G_PRIVATE_KEY so the user only signs the Sepolia ENS register tx —
@@ -47,13 +47,13 @@ export default async function handler(
     try {
         const provider = new ethers.JsonRpcProvider(ZG_RPC);
         const signer = new ethers.Wallet(privateKey, provider);
-        const sparkinft = new ethers.Contract(
-            SPARKINFT_ADDRESS,
-            SPARKINFT_ABI,
+        const inft = new ethers.Contract(
+            RIGHTHAND_INFT_ADDRESS,
+            RIGHTHAND_INFT_ABI,
             signer,
         );
 
-        const tx = await sparkinft.mintAgent(
+        const tx = await inft.mintAgent(
             to,
             botId,
             domainTags,
@@ -66,7 +66,7 @@ export default async function handler(
         }
 
         // Parse AgentMinted(uint256 indexed tokenId, address indexed owner, string botId)
-        const iface = new ethers.Interface(SPARKINFT_ABI);
+        const iface = new ethers.Interface(RIGHTHAND_INFT_ABI);
         let tokenId: string | null = null;
         for (const log of receipt.logs) {
             try {

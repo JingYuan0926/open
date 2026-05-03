@@ -114,7 +114,7 @@ function TaskListItem({
             </div>
           )}
           <div className="grid grid-cols-3 gap-2 max-[480px]:grid-cols-1 text-[12px]">
-            <Stat label="Budget" value={`${formatEther(task.budget)} ETH`} />
+            <Stat label="Budget" value={`${formatEther(task.budget)} USDC`} />
             <Stat label="Deadline" value={formatDeadline(task.deadline)} />
             <Stat
               label="Specialists"
@@ -248,7 +248,7 @@ export function Marketplace() {
       ) : open.length === 0 ? (
         <div className="border border-dashed border-border rounded-md px-4 py-10 text-center text-[13px] text-ink-3">
           No open tasks. Head to{" "}
-          <Link href="/landing" className="text-ink underline">
+          <Link href="/chat" className="text-ink underline">
             chat
           </Link>{" "}
           to post one.

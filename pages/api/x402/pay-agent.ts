@@ -1,33 +1,36 @@
 import type { NextApiRequest, NextApiResponse } from "next";
 import { ethers } from "ethers";
 
-// x402-protocol-shaped endpoint. Settles in NATIVE 0G on Galileo testnet
-// (chainId 16602) using `0G_PRIVATE_KEY` from the server env.
+// x402-protocol-shaped endpoint. Settles in USDC on Base Sepolia
+// (chainId 84532) using `0G_PRIVATE_KEY` (a generic secp256k1 keypair —
+// the "0G" prefix is a misnomer; the same key works on any EVM chain).
 //
 // Two-stage flow per the x402 spec:
 //   1. POST without `X-PAYMENT` header  →  HTTP 402 + paymentRequirements JSON
-//   2. POST with `X-PAYMENT` header     →  server pushes the on-chain transfer,
-//                                          returns 200 + tx hash + explorer URL
+//   2. POST with `X-PAYMENT` header     →  server signs USDC.transfer(payTo, amount),
+//                                          returns 200 + tx hash + basescan URL
 //
-// Why a custom `native` scheme instead of the canonical `exact` scheme:
-// `exact` requires EIP-3009 transferWithAuthorization, which only USDC and
-// similar tokens implement — 0G's native token doesn't. So we register a
-// custom `native` scheme on network `0g-galileo-testnet`. The server
-// (holding `0G_PRIVATE_KEY`) acts as both facilitator and payer; the
-// `X-PAYMENT` header is a base64-encoded JSON the UI submits to confirm
-// intent and bind the request body to the requirements returned in step 1.
+// Why server-signed (not the canonical wallet-signed EIP-3009 flow):
+// keeps the demo single-click. Server holds the funded wallet, takes the
+// confirmation header as intent, and pushes the on-chain transfer itself.
+// The wire format (scheme=exact, network=base-sepolia) still matches the
+// canonical x402 schema for Base, so the same UI can later be pointed at
+// Coinbase's hosted facilitator with no protocol changes.
 
-const ZG_RPC = "https://evmrpc-testnet.0g.ai";
-const ZG_CHAIN_ID = 16602;
-const NETWORK = "0g-galileo-testnet";
-const SCHEME = "native";
-const NATIVE_ASSET = "0x0000000000000000000000000000000000000000";
+const BASE_SEPOLIA_RPC =
+    process.env.BASE_SEPOLIA_RPC_URL ?? "https://sepolia.base.org";
+const BASE_SEPOLIA_CHAIN_ID = 84532;
+const NETWORK = "base-sepolia";
+const SCHEME = "exact";
+// Circle's USDC on Base Sepolia (canonical address from x402 docs)
+const USDC_ADDRESS = "0x036CbD53842c5426634e7929541eC2318f3dCF7e";
+const USDC_DECIMALS = 6;
 const X402_VERSION = 1;
 
 type PayBody = {
     agentName: string;
     ownerAddress: string;
-    priceOG: string;
+    priceOG: string; // misnamed for legacy reasons; interpreted as USDC amount
 };
 
 type PaymentPayload = {
@@ -64,6 +67,12 @@ function decodePayment(header: string): PaymentPayload | null {
     }
 }
 
+const ERC20_ABI = [
+    "function transfer(address to, uint256 value) returns (bool)",
+    "function balanceOf(address) view returns (uint256)",
+    "function decimals() view returns (uint8)",
+];
+
 export default async function handler(
     req: NextApiRequest,
     res: NextApiResponse,
@@ -87,10 +96,10 @@ export default async function handler(
     if (!isPositiveDecimal(priceOG)) {
         return res
             .status(400)
-            .json({ error: "Invalid priceOG (must be positive decimal)" });
+            .json({ error: "Invalid price (must be positive decimal)" });
     }
 
-    const amountWei = ethers.parseUnits(priceOG, 18).toString();
+    const amountAtomic = ethers.parseUnits(priceOG, USDC_DECIMALS).toString();
     const proto =
         (req.headers["x-forwarded-proto"] as string) ||
         (req.headers.host?.startsWith("localhost") ? "http" : "https");
@@ -106,17 +115,19 @@ export default async function handler(
                 {
                     scheme: SCHEME,
                     network: NETWORK,
-                    maxAmountRequired: amountWei,
+                    maxAmountRequired: amountAtomic,
                     resource,
                     description: `Per-call payment to ${agentName}`,
                     mimeType: "application/json",
                     payTo: ownerAddress,
                     maxTimeoutSeconds: 300,
-                    asset: NATIVE_ASSET,
+                    asset: USDC_ADDRESS,
                     extra: {
-                        chainId: ZG_CHAIN_ID,
+                        chainId: BASE_SEPOLIA_CHAIN_ID,
                         agentName,
-                        humanReadableAmount: `${priceOG} 0G`,
+                        humanReadableAmount: `${priceOG} USDC`,
+                        token: "USDC",
+                        tokenDecimals: USDC_DECIMALS,
                     },
                 },
             ],
@@ -134,7 +145,7 @@ export default async function handler(
 
     if (
         payment.payload.payTo.toLowerCase() !== ownerAddress.toLowerCase() ||
-        payment.payload.amount !== amountWei ||
+        payment.payload.amount !== amountAtomic ||
         payment.payload.agentName !== agentName
     ) {
         return res.status(400).json({
@@ -150,7 +161,7 @@ export default async function handler(
     }
 
     try {
-        const provider = new ethers.JsonRpcProvider(ZG_RPC);
+        const provider = new ethers.JsonRpcProvider(BASE_SEPOLIA_RPC);
         const signer = new ethers.Wallet(privateKey, provider);
 
         if (signer.address.toLowerCase() === ownerAddress.toLowerCase()) {
@@ -162,15 +173,16 @@ export default async function handler(
             });
         }
 
-        const tx = await signer.sendTransaction({
-            to: ownerAddress,
-            value: ethers.parseUnits(priceOG, 18),
-        });
+        const usdc = new ethers.Contract(USDC_ADDRESS, ERC20_ABI, signer);
+        const tx = await usdc.transfer(
+            ownerAddress,
+            ethers.parseUnits(priceOG, USDC_DECIMALS),
+        );
         const receipt = await tx.wait();
         if (!receipt) {
             return res
                 .status(500)
-                .json({ error: "No receipt from 0G RPC", txHash: tx.hash });
+                .json({ error: "No receipt from Base Sepolia RPC", txHash: tx.hash });
         }
 
         return res.status(200).json({
@@ -179,9 +191,10 @@ export default async function handler(
             from: signer.address,
             payTo: ownerAddress,
             amount: priceOG,
+            asset: "USDC",
             network: NETWORK,
-            chainId: ZG_CHAIN_ID,
-            explorerUrl: `https://chainscan-galileo.0g.ai/tx/${tx.hash}`,
+            chainId: BASE_SEPOLIA_CHAIN_ID,
+            explorerUrl: `https://sepolia.basescan.org/tx/${tx.hash}`,
             blockNumber: receipt.blockNumber,
         });
     } catch (err: unknown) {

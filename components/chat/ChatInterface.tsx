@@ -3,13 +3,15 @@ import { Welcome } from "@/components/chat/Welcome";
 import { ChatInput } from "@/components/chat/ChatInput";
 import { TaskCreationCard, suggestSkills } from "@/components/chat/TaskCreationCard";
 import { DemoFlow } from "@/components/chat/DemoFlow";
-import { MODES } from "@/lib/mock-data";
 import type { ModeId } from "@/types";
+import type { ChatMessage } from "@/lib/chat-storage";
 
-type ChatItem =
+export type ChatItem =
   | { kind: "user"; id: string; content: string }
+  | { kind: "thinking"; id: string; prompt: string; mode: ModeId }
   | { kind: "draft"; id: string; prompt: string; mode: ModeId; postedLabel?: string }
-  | { kind: "demo"; id: string; label: string };
+  | { kind: "demo"; id: string; label: string }
+  | { kind: "assistant"; id: string; content: string; stream?: boolean };
 
 const MODE_TO_MAX: Record<ModeId, number> = {
   solo: 1,
@@ -18,25 +20,144 @@ const MODE_TO_MAX: Record<ModeId, number> = {
   deep: 5,
 };
 
-export function ChatInterface() {
+const THINKING_STEP_MS = 2000;
+const THINKING_STEPS = 3;
+const THINKING_MS = THINKING_STEP_MS * THINKING_STEPS;
+
+const PLAN_RESPONSE =
+  "Here's the plan. Tune the specialists and how fast you want it done — then invite matching specialists.";
+const POSTED_RESPONSE = (label: string) =>
+  `I've posted the task to Sepolia as ${label}. Watching for specialists to sign on…`;
+
+// Persist non-ephemeral items as ChatMessage records. Thinking items are
+// transient UI animations and never round-trip through storage.
+export function itemsToMessages(items: ChatItem[]): ChatMessage[] {
+  const now = Date.now();
+  const out: ChatMessage[] = [];
+  items.forEach((it, i) => {
+    const ts = now + i;
+    if (it.kind === "user") {
+      out.push({ role: "user", content: it.content, timestamp: ts });
+    } else if (it.kind === "demo") {
+      out.push({
+        role: "assistant",
+        content: JSON.stringify({ kind: "demo", label: it.label }),
+        timestamp: ts,
+      });
+    } else if (it.kind === "draft") {
+      out.push({
+        role: "assistant",
+        content: JSON.stringify({
+          kind: "draft",
+          prompt: it.prompt,
+          mode: it.mode,
+        }),
+        timestamp: ts,
+      });
+    } else if (it.kind === "assistant") {
+      out.push({ role: "assistant", content: it.content, timestamp: ts });
+    }
+  });
+  return out;
+}
+
+export function messagesToItems(messages: ChatMessage[]): ChatItem[] {
+  const out: ChatItem[] = [];
+  messages.forEach((m, i) => {
+    const id = `r-${m.timestamp}-${i}`;
+    if (m.role === "user") {
+      out.push({ kind: "user", id, content: m.content });
+      return;
+    }
+    if (m.role === "assistant") {
+      try {
+        const parsed = JSON.parse(m.content);
+        if (parsed?.kind === "demo" && typeof parsed.label === "string") {
+          out.push({ kind: "demo", id, label: parsed.label });
+          return;
+        }
+        if (parsed?.kind === "draft" && typeof parsed.prompt === "string") {
+          const mode: ModeId = ["solo", "pair", "swarm", "deep"].includes(
+            parsed.mode,
+          )
+            ? parsed.mode
+            : "swarm";
+          out.push({ kind: "draft", id, prompt: parsed.prompt, mode });
+          return;
+        }
+      } catch {
+        // Plain text assistant message — render as a static bubble (no streaming).
+      }
+      out.push({ kind: "assistant", id, content: m.content, stream: false });
+    }
+  });
+  return out;
+}
+
+export function ChatInterface({
+  initialItems,
+  onItemsChange,
+}: {
+  initialItems?: ChatItem[];
+  onItemsChange?: (items: ChatItem[]) => void;
+} = {}) {
   const [input, setInput] = React.useState("");
   const mode: ModeId = "swarm";
-  const [items, setItems] = React.useState<ChatItem[]>([]);
+  const [items, setItems] = React.useState<ChatItem[]>(initialItems ?? []);
   const scrollRef = React.useRef<HTMLDivElement>(null);
+  const timersRef = React.useRef<Set<ReturnType<typeof setTimeout>>>(new Set());
 
   React.useEffect(() => {
     if (scrollRef.current) scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
   }, [items]);
 
+  React.useEffect(() => {
+    const timers = timersRef.current;
+    return () => {
+      timers.forEach((t) => clearTimeout(t));
+      timers.clear();
+    };
+  }, []);
+
+  React.useEffect(() => {
+    onItemsChange?.(items);
+  }, [items, onItemsChange]);
+
   const submit = (prompt: string, m: ModeId) => {
     const trimmed = prompt.trim();
     if (!trimmed) return;
     const stamp = Date.now().toString(36);
+    const draftId = `d-${stamp}`;
     setItems((prev) => [
       ...prev,
       { kind: "user", id: `u-${stamp}`, content: trimmed },
-      { kind: "draft", id: `d-${stamp}`, prompt: trimmed, mode: m },
+      { kind: "thinking", id: draftId, prompt: trimmed, mode: m },
     ]);
+    const t = setTimeout(() => {
+      timersRef.current.delete(t);
+      // Replace the thinking placeholder with the assistant's text response
+      // followed by the editable draft. Both are persisted via itemsToMessages.
+      setItems((prev) => {
+        const idx = prev.findIndex(
+          (it) => it.id === draftId && it.kind === "thinking",
+        );
+        if (idx < 0) return prev;
+        const next = [...prev];
+        next.splice(
+          idx,
+          1,
+          {
+            kind: "assistant",
+            id: `a-${stamp}`,
+            content: PLAN_RESPONSE,
+            stream: true,
+          },
+          { kind: "draft", id: draftId, prompt: trimmed, mode: m },
+        );
+        return next;
+      });
+    }, THINKING_MS);
+    timersRef.current.add(t);
   };
 
   const handleSubmit = () => {
@@ -52,16 +173,20 @@ export function ChatInterface() {
       const insertAt = prev.findIndex((x) => x.id === draftId);
       if (insertAt < 0) return prev;
       const next = [...prev];
-      next.splice(insertAt + 1, 0, {
-        kind: "demo",
-        id: `demo-${draftId}`,
-        label,
-      });
+      next.splice(
+        insertAt + 1,
+        0,
+        {
+          kind: "assistant",
+          id: `a-posted-${draftId}`,
+          content: POSTED_RESPONSE(label),
+          stream: true,
+        },
+        { kind: "demo", id: `demo-${draftId}`, label },
+      );
       return next;
     });
   }, []);
-
-  const modeLabel = MODES.find((x) => x.id === mode)!.label;
 
   return (
     <div className="min-h-0 min-w-0">
@@ -75,8 +200,22 @@ export function ChatInterface() {
                 if (it.kind === "user") return <UserBubble key={it.id} content={it.content} />;
                 if (it.kind === "demo")
                   return (
-                    <AssistantWrapper key={it.id} modeLabel={modeLabel}>
+                    <AssistantWrapper key={it.id}>
                       <DemoFlow taskLabel={it.label} />
+                    </AssistantWrapper>
+                  );
+                if (it.kind === "thinking")
+                  return (
+                    <AssistantWrapper key={it.id}>
+                      <ThinkingIndicator prompt={it.prompt} />
+                    </AssistantWrapper>
+                  );
+                if (it.kind === "assistant")
+                  return (
+                    <AssistantWrapper key={it.id}>
+                      <p className="whitespace-pre-wrap">
+                        {it.stream ? <StreamingText text={it.content} /> : it.content}
+                      </p>
                     </AssistantWrapper>
                   );
                 return (
@@ -84,7 +223,6 @@ export function ChatInterface() {
                     key={it.id}
                     draftId={it.id}
                     prompt={it.prompt}
-                    modeLabel={modeLabel}
                     maxSpecialists={MODE_TO_MAX[it.mode]}
                     onPosted={handlePosted}
                   />
@@ -105,38 +243,49 @@ export function ChatInterface() {
 
 function UserBubble({ content }: { content: string }) {
   return (
-    <div className="flex gap-3.5 py-4 border-t border-border first:border-t-0">
-      <div className="w-7 h-7 rounded-md bg-gradient-to-br from-slate-500 to-slate-800 text-white grid place-items-center text-[12px] font-semibold shrink-0">
-        JK
-      </div>
-      <div className="flex-1 min-w-0 pt-0.5">
-        <div className="font-medium text-[13.5px] mb-1">You</div>
-        <p className="text-[14px] leading-relaxed">{content}</p>
+    <div className="flex justify-end py-3">
+      <div className="max-w-[75%] px-4 py-2.5 rounded-2xl bg-surface-3 text-ink text-[14px] leading-relaxed whitespace-pre-wrap break-words">
+        {content}
       </div>
     </div>
   );
 }
 
+function StreamingText({
+  text,
+  speed = 10,
+}: {
+  text: string;
+  speed?: number;
+}) {
+  const [count, setCount] = React.useState(0);
+
+  React.useEffect(() => {
+    setCount(0);
+  }, [text]);
+
+  React.useEffect(() => {
+    if (count >= text.length) return;
+    const t = setTimeout(() => setCount((c) => c + 1), speed);
+    return () => clearTimeout(t);
+  }, [count, text.length, speed]);
+
+  return <>{text.slice(0, count)}</>;
+}
+
 function AssistantDraft({
   draftId,
   prompt,
-  modeLabel,
   maxSpecialists,
   onPosted,
 }: {
   draftId: string;
   prompt: string;
-  modeLabel: string;
   maxSpecialists: number;
   onPosted: (draftId: string, label: string) => void;
 }) {
   return (
-    <AssistantWrapper modeLabel={modeLabel}>
-      <p className="mb-2.5">
-        I&rsquo;ll publish this on the ENS task marketplace so matching
-        specialists can sign on. Review the spec, edit anything, then post
-        it on Sepolia.
-      </p>
+    <AssistantWrapper>
       <TaskCreationCard
         initialDescription={prompt}
         initialSkills={suggestSkills(prompt)}
@@ -147,25 +296,63 @@ function AssistantDraft({
   );
 }
 
+function ThinkingIndicator({ prompt }: { prompt: string }) {
+  const steps = React.useMemo(() => {
+    const trimmed = prompt.trim();
+    const short = trimmed.length > 90 ? `${trimmed.slice(0, 87)}…` : trimmed;
+    return [
+      {
+        label: "Reading the prompt",
+        commentary: `User wants: "${short}". Identifying intent and required skills.`,
+      },
+      {
+        label: "Designing the task",
+        commentary: "Drafting the description, picking specialist count, and pricing the deadline.",
+      },
+      {
+        label: "Asking permission from user",
+        commentary: "Spec is ready — review the parameters and post on Sepolia when you're set.",
+      },
+    ];
+  }, [prompt]);
+
+  const [active, setActive] = React.useState(0);
+
+  React.useEffect(() => {
+    if (active >= steps.length - 1) return;
+    const t = setTimeout(() => setActive((a) => a + 1), THINKING_STEP_MS);
+    return () => clearTimeout(t);
+  }, [active, steps.length]);
+
+  const current = steps[active];
+
+  return (
+    <div className="grid gap-1.5 text-[13.5px] min-h-[44px]">
+      <div className="flex items-center gap-2 text-ink">
+        <span
+          aria-hidden
+          className="inline-block w-2.5 h-2.5 rounded-full bg-accent pulse-ring shrink-0"
+        />
+        <span className="font-medium">
+          {current.label}
+          <span className="text-ink-3">…</span>
+        </span>
+      </div>
+      <p className="text-[12.5px] text-ink-3 italic leading-snug pl-[18px]">
+        <StreamingText key={active} text={current.commentary} speed={15} />
+      </p>
+    </div>
+  );
+}
+
 function AssistantWrapper({
-  modeLabel,
   children,
 }: {
-  modeLabel: string;
   children: React.ReactNode;
 }) {
   return (
-    <div className="flex gap-3.5 py-4 border-t border-border first:border-t-0">
-      <div className="w-7 h-7 rounded-md bg-accent text-accent-fg grid place-items-center text-[12px] font-medium shrink-0">
-        R
-      </div>
-      <div className="flex-1 min-w-0 pt-0.5">
-        <div className="font-medium text-[13.5px] mb-1 flex items-baseline gap-2 flex-wrap">
-          Right-Hand{" "}
-          <span className="text-[12px] text-ink-3 font-normal">{modeLabel} mode</span>
-        </div>
-        <div className="text-[14px] leading-relaxed text-ink">{children}</div>
-      </div>
+    <div className="py-4 border-t border-border first:border-t-0">
+      <div className="text-[14px] leading-relaxed text-ink">{children}</div>
     </div>
   );
 }

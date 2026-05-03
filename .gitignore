@@ -24,11 +24,14 @@
 .DS_Store
 *.pem
 
-# AXL
+# AXL — per-machine artefacts, NEVER commit
 node
 axl/dist/
 .axl/
 axl/node-config.json
+axl/node-config*.json
+axl/private*.pem
+axl/*.pem
 
 # debug
 npm-debug.log*
@@ -41,6 +44,12 @@ yarn-error.log*
 
 # vercel
 .vercel
+
+# reference clone — never commit
+tee-reference/
+
+# per-machine chat session metadata (0G storage rootHashes are content-addressed; the index is local-only)
+data/chat-sessions.json
 
 # typescript
 *.tsbuildinfo

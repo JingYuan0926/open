@@ -14,15 +14,9 @@ import {
   TASK_MARKET_ADDRESS,
 } from "@/lib/networkConfig";
 
-// Default deadline = 24h from now, formatted for <input type="datetime-local">.
-function default24h(): string {
-  const d = new Date(Date.now() + 24 * 60 * 60 * 1000);
-  const pad = (n: number) => String(n).padStart(2, "0");
-  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
-}
-
 // Light keyword routing — picks a few skill tags from the user's prompt so
-// the right specialists in the marketplace can match. Editable in the form.
+// the right specialists in the marketplace can match. Backend-only now;
+// not exposed in the form.
 export function suggestSkills(prompt: string): string {
   const p = prompt.toLowerCase();
   const tags: string[] = [];
@@ -41,6 +35,57 @@ export function suggestSkills(prompt: string): string {
 
 type Step = "editing" | "awaiting" | "confirming" | "posted" | "error";
 
+const SPECIALISTS_MIN = 1;
+const SPECIALISTS_MAX = 5;
+const SPEED_MIN = 1;
+const SPEED_MAX = 10;
+
+// Additive pricing: each lever contributes its own line to the breakdown.
+const RATE_PER_SPECIALIST = 0.001; // USDC
+const RATE_PER_SPEED_LEVEL = 0.0008; // USDC per +1 speed beyond 1×
+const SWARM_COORDINATION_FEE = 0.0005; // USDC, only when >= 2 specialists
+
+function computeBreakdown(specialists: number, speedLevel: number) {
+  const specialistsCost = specialists * RATE_PER_SPECIALIST;
+  const speedCost = (speedLevel - SPEED_MIN) * RATE_PER_SPEED_LEVEL;
+  const swarmCost = specialists >= 2 ? SWARM_COORDINATION_FEE : 0;
+  const total = Number((specialistsCost + speedCost + swarmCost).toFixed(4));
+  return { specialistsCost, speedCost, swarmCost, total };
+}
+
+// Speed level → estimated completion time. 1× ≈ 10 min, 10× ≈ 1 min.
+function estimatedSeconds(speedLevel: number): number {
+  return Math.round(600 - (speedLevel - SPEED_MIN) * 60);
+}
+
+function fmtTime(sec: number): string {
+  if (sec < 60) return `${sec} sec`;
+  const m = Math.round(sec / 60);
+  return `${m} min`;
+}
+
+function fmtEth(n: number): string {
+  return n.toFixed(4).replace(/\.?0+$/, "") || "0";
+}
+
+// USDC icon — Circle's standard mark, served from streamlinehq's CDN.
+const USDC_ICON_URL =
+  "https://assets.streamlinehq.com/image/private/w_300,h_300,ar_1/f_auto/v1/icons/vectors/usdc-fpxuadmgafrjjy85bgie5.png/usdc-kksfxcrdl3f9pjx0v6jxxp.png?_a=DATAiZAAZAA0";
+
+function UsdcIcon({ size = 12 }: { size?: number }) {
+  return (
+    <img
+      src={USDC_ICON_URL}
+      alt="USDC"
+      width={size}
+      height={size}
+      className="inline-block align-middle shrink-0 select-none"
+      loading="lazy"
+      decoding="async"
+    />
+  );
+}
+
 export function TaskCreationCard({
   initialDescription,
   initialSkills,
@@ -55,14 +100,17 @@ export function TaskCreationCard({
   const { address } = useAccount();
 
   const [description, setDescription] = React.useState(initialDescription);
-  const [skillTags, setSkillTags] = React.useState(
-    initialSkills ?? suggestSkills(initialDescription),
+  const skillTags = React.useMemo(
+    () => initialSkills ?? suggestSkills(initialDescription),
+    [initialSkills, initialDescription],
   );
-  const [deadline, setDeadline] = React.useState<string>(default24h);
+  const [speedLevel, setSpeedLevel] = React.useState(5);
   const [maxSpecialists, setMaxSpecialists] = React.useState(
-    String(initialMaxSpecialists),
+    Math.min(SPECIALISTS_MAX, Math.max(SPECIALISTS_MIN, initialMaxSpecialists)),
   );
-  const [budget, setBudget] = React.useState("0.001");
+  const breakdown = computeBreakdown(maxSpecialists, speedLevel);
+  const isSwarm = maxSpecialists >= 2;
+  const etaSeconds = estimatedSeconds(speedLevel);
   const [validationError, setValidationError] = React.useState<string | null>(null);
 
   const {
@@ -133,33 +181,29 @@ export function TaskCreationCard({
       setValidationError("Description is required.");
       return;
     }
-    const ts = Math.floor(new Date(deadline).getTime() / 1000);
-    if (!Number.isFinite(ts) || ts <= Math.floor(Date.now() / 1000)) {
-      setValidationError("Deadline must be in the future.");
-      return;
-    }
+    const ts = Math.floor(Date.now() / 1000) + etaSeconds;
     let budgetWei: bigint;
     try {
-      budgetWei = parseEther(budget);
+      budgetWei = parseEther(breakdown.total.toString());
     } catch {
-      setValidationError("Invalid budget — must be a decimal in ETH.");
+      setValidationError("Invalid budget.");
       return;
     }
     if (budgetWei <= BigInt(0)) {
       setValidationError("Budget must be greater than zero.");
       return;
     }
-    const max = Number(maxSpecialists);
-    if (!Number.isInteger(max) || max < 1 || max > 255) {
-      setValidationError("Max specialists must be an integer 1–255.");
-      return;
-    }
+
+    // Fire-and-forget — settles per-call royalties to each specialist
+    // over x402 (Base Sepolia USDC) and prints the transcript to the
+    // dev server stdout alongside the Sepolia ENS task post that follows.
+    fetch("/api/x402/pay-specialists", { method: "POST" }).catch(() => undefined);
 
     writeContract({
       address: TASK_MARKET_ADDRESS,
       abi: TASK_MARKET_ABI,
       functionName: "postTask",
-      args: [description.trim(), skillTags.trim(), BigInt(ts), max],
+      args: [description.trim(), skillTags.trim(), BigInt(ts), maxSpecialists],
       value: budgetWei,
       chainId: ENS_CHAIN_ID,
     });
@@ -188,68 +232,68 @@ export function TaskCreationCard({
         <span className="ml-auto normal-case tracking-normal">{headerBadge}</span>
       </div>
 
-      <div className="p-3 grid gap-3">
-        <div>
-          <label className="block text-[11.5px] uppercase tracking-wide text-ink-3 mb-1">
-            Description
-          </label>
-          <textarea
-            value={description}
-            onChange={(e) => setDescription(e.target.value)}
+      <div className="p-3 grid gap-4">
+        <div className="grid grid-cols-2 gap-2.5">
+          <BoxedSlider
+            label="Specialists"
+            value={`${maxSpecialists}`}
+            min={SPECIALISTS_MIN}
+            max={SPECIALISTS_MAX}
+            step={1}
+            raw={maxSpecialists}
+            onChange={(v) => setMaxSpecialists(Math.round(v))}
+            minLabel={`${SPECIALISTS_MIN}`}
+            maxLabel={`${SPECIALISTS_MAX}`}
             disabled={isLocked}
-            rows={2}
-            className="w-full px-2.5 py-2 bg-white border border-border rounded-md text-[13px] text-ink resize-y min-h-[44px] focus:outline-none focus:border-accent focus:ring-2 focus:ring-accent/15 transition-colors disabled:bg-surface-2 disabled:text-ink-2"
+            hint={isSwarm ? "Swarm mode" : "Solo"}
+          />
+
+          <BoxedSlider
+            label="Speed up"
+            value={`${speedLevel}×`}
+            min={SPEED_MIN}
+            max={SPEED_MAX}
+            step={1}
+            raw={speedLevel}
+            onChange={(v) => setSpeedLevel(Math.round(v))}
+            minLabel={`${SPEED_MIN}×`}
+            maxLabel={`${SPEED_MAX}×`}
+            disabled={isLocked}
+            hint={`≈ ${fmtTime(etaSeconds)} to complete`}
           />
         </div>
 
-        <div className="grid grid-cols-2 gap-2.5">
-          <div>
-            <label className="block text-[11.5px] uppercase tracking-wide text-ink-3 mb-1">
-              Skill tags
-            </label>
-            <input
-              value={skillTags}
-              onChange={(e) => setSkillTags(e.target.value)}
-              disabled={isLocked}
-              className="w-full h-[34px] px-2.5 bg-white border border-border rounded-md text-[12.5px] font-mono text-ink focus:outline-none focus:border-accent focus:ring-2 focus:ring-accent/15 transition-colors disabled:bg-surface-2 disabled:text-ink-2"
-            />
+        <div>
+          <div className="text-[11.5px] uppercase tracking-wide text-ink-3 mb-1.5">
+            Total cost
           </div>
-          <div>
-            <label className="block text-[11.5px] uppercase tracking-wide text-ink-3 mb-1">
-              Budget (ETH)
-            </label>
-            <input
-              value={budget}
-              onChange={(e) => setBudget(e.target.value)}
-              disabled={isLocked}
-              className="w-full h-[34px] px-2.5 bg-white border border-border rounded-md text-[12.5px] font-mono text-ink focus:outline-none focus:border-accent focus:ring-2 focus:ring-accent/15 transition-colors disabled:bg-surface-2 disabled:text-ink-2"
-            />
-          </div>
-        </div>
-
-        <div className="grid grid-cols-2 gap-2.5">
-          <div>
-            <label className="block text-[11.5px] uppercase tracking-wide text-ink-3 mb-1">
-              Deadline
-            </label>
-            <input
-              type="datetime-local"
-              value={deadline}
-              onChange={(e) => setDeadline(e.target.value)}
-              disabled={isLocked}
-              className="w-full h-[34px] px-2.5 bg-white border border-border rounded-md text-[12.5px] text-ink focus:outline-none focus:border-accent focus:ring-2 focus:ring-accent/15 transition-colors disabled:bg-surface-2 disabled:text-ink-2"
-            />
-          </div>
-          <div>
-            <label className="block text-[11.5px] uppercase tracking-wide text-ink-3 mb-1">
-              Max specialists
-            </label>
-            <input
-              value={maxSpecialists}
-              onChange={(e) => setMaxSpecialists(e.target.value)}
-              disabled={isLocked}
-              className="w-full h-[34px] px-2.5 bg-white border border-border rounded-md text-[12.5px] font-mono text-ink focus:outline-none focus:border-accent focus:ring-2 focus:ring-accent/15 transition-colors disabled:bg-surface-2 disabled:text-ink-2"
-            />
+          <div className="rounded-md border border-border bg-surface-2 px-3.5 py-3 grid gap-1 text-[12.5px] text-ink-2">
+            <div className="flex items-center justify-between">
+              <span>Specialists × {maxSpecialists}</span>
+              <span className="inline-flex items-center gap-1 font-mono tabular-nums text-ink">
+                {fmtEth(breakdown.specialistsCost)} <UsdcIcon size={18} /> USDC
+              </span>
+            </div>
+            {isSwarm && (
+              <div className="flex items-center justify-between pl-3">
+                <span className="text-ink-3">— Swarm mode</span>
+                <span className="inline-flex items-center gap-1 font-mono tabular-nums text-ink">
+                  +{fmtEth(breakdown.swarmCost)} <UsdcIcon size={18} /> USDC
+                </span>
+              </div>
+            )}
+            <div className="flex items-center justify-between">
+              <span>Speed boost × {speedLevel}</span>
+              <span className="inline-flex items-center gap-1 font-mono tabular-nums text-ink">
+                +{fmtEth(breakdown.speedCost)} <UsdcIcon size={18} /> USDC
+              </span>
+            </div>
+            <div className="border-t border-border mt-1.5 pt-2 flex items-center justify-between">
+              <span className="text-[13px] font-medium text-ink">Total</span>
+              <span className="inline-flex items-center gap-1 text-[16px] font-mono font-semibold text-ink tabular-nums">
+                {fmtEth(breakdown.total)} <UsdcIcon size={22} /> USDC
+              </span>
+            </div>
           </div>
         </div>
 
@@ -277,7 +321,24 @@ export function TaskCreationCard({
           </div>
         )}
 
-        <div className="flex items-center gap-2 pt-1">
+        <div className="flex items-center justify-end gap-2 pt-1">
+          {hash && (
+            <a
+              href={`https://sepolia.etherscan.io/tx/${hash}`}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="mr-auto text-[11.5px] font-mono text-blue-700 underline break-all"
+            >
+              {hash.slice(0, 10)}…{hash.slice(-8)}
+            </a>
+          )}
+
+          {step === "error" && (
+            <Button variant="ghost" icon="refresh" onClick={reset}>
+              Try again
+            </Button>
+          )}
+
           {!address ? (
             <ConnectButton.Custom>
               {({ openConnectModal, mounted }) => (
@@ -310,36 +371,112 @@ export function TaskCreationCard({
                 ? "Sign in wallet…"
                 : step === "confirming"
                   ? "Confirming…"
-                  : "Post on Sepolia"}
+                  : "Pay & Post"}
             </Button>
-          )}
-
-          {step === "error" && (
-            <Button variant="ghost" icon="refresh" onClick={reset}>
-              Try again
-            </Button>
-          )}
-
-          {hash && (
-            <a
-              href={`https://sepolia.etherscan.io/tx/${hash}`}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="ml-auto text-[11.5px] font-mono text-blue-700 underline break-all"
-            >
-              {hash.slice(0, 10)}…{hash.slice(-8)}
-            </a>
           )}
         </div>
 
-        <div className="text-[11px] text-ink-3">
-          Posts to <span className="font-mono">TaskMarket</span> on Sepolia. The
-          contract escrows the budget, mints{" "}
-          <span className="font-mono">task-&#123;id&#125;.{ENS_PARENT_DOMAIN}</span>,
-          and writes description / skills / budget / deadline / status as ENS
-          text records.
+      </div>
+    </div>
+  );
+}
+
+function BoxedSlider({
+  label,
+  value,
+  min,
+  max,
+  step,
+  raw,
+  onChange,
+  minLabel,
+  maxLabel,
+  disabled,
+  hint,
+}: {
+  label: string;
+  value: string;
+  min: number;
+  max: number;
+  step: number;
+  raw: number;
+  onChange: (v: number) => void;
+  minLabel: string;
+  maxLabel: string;
+  disabled?: boolean;
+  hint?: string;
+}) {
+  return (
+    <div>
+      <div className="text-[11.5px] uppercase tracking-wide text-ink-3 mb-1.5">
+        {label}
+      </div>
+      <div className="rounded-md border border-border bg-surface-2 px-3 py-2.5 grid gap-2">
+        <div className="flex items-center justify-between gap-2">
+          <div className="flex items-baseline gap-2 min-w-0">
+            <span className="text-[18px] font-mono font-semibold text-ink tabular-nums leading-none shrink-0">
+              {value}
+            </span>
+            {hint && (
+              <span className="text-[11px] text-ink-3 leading-tight truncate">
+                ({hint})
+              </span>
+            )}
+          </div>
+          <div className="flex items-center gap-1 shrink-0">
+            <StepButton
+              symbol="−"
+              ariaLabel={`Decrease ${label}`}
+              disabled={disabled || raw <= min}
+              onClick={() => onChange(Math.max(min, raw - step))}
+            />
+            <StepButton
+              symbol="+"
+              ariaLabel={`Increase ${label}`}
+              disabled={disabled || raw >= max}
+              onClick={() => onChange(Math.min(max, raw + step))}
+            />
+          </div>
+        </div>
+        <input
+          type="range"
+          min={min}
+          max={max}
+          step={step}
+          value={raw}
+          onChange={(e) => onChange(Number(e.target.value))}
+          disabled={disabled}
+          className="w-full h-1.5 accent-accent cursor-pointer disabled:cursor-not-allowed disabled:opacity-50"
+        />
+        <div className="flex items-center justify-between text-[10px] text-ink-4 font-mono">
+          <span>{minLabel}</span>
+          <span>{maxLabel}</span>
         </div>
       </div>
     </div>
+  );
+}
+
+function StepButton({
+  symbol,
+  ariaLabel,
+  disabled,
+  onClick,
+}: {
+  symbol: string;
+  ariaLabel: string;
+  disabled?: boolean;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      aria-label={ariaLabel}
+      disabled={disabled}
+      onClick={onClick}
+      className="w-6 h-6 grid place-items-center rounded-md border border-border bg-white text-ink-2 text-[14px] leading-none font-medium hover:bg-surface-3 hover:text-ink active:bg-surface-3 disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-white disabled:hover:text-ink-2 transition-colors"
+    >
+      {symbol}
+    </button>
   );
 }

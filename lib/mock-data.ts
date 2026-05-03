@@ -86,7 +86,7 @@ export const NAV_USER = [
 export const NAV_HOST = [
   { id: "host", label: "Overview", icon: "dashboard" as const, count: null as number | null },
   { id: "host-agents", label: "Agents", icon: "agents" as const, count: 5 },
-  { id: "host-invocations", label: "Invocations", icon: "tasks" as const, count: null },
+  { id: "host-tasks", label: "Tasks", icon: "tasks" as const, count: null },
   { id: "host-earnings", label: "Earnings", icon: "earnings" as const, count: null },
   { id: "host-settings", label: "Settings", icon: "settings" as const, count: null },
 ];

@@ -5,19 +5,40 @@ import clsx from "clsx";
 
 type NavItem = { id: string; label: string; icon: IconName; count: number | null };
 
-export function Sidebar({ nav, currentNav, onNav, history, onNewChat, mode = "user" }: {
-  nav: NavItem[]; currentNav: string; onNav: (id: string) => void;
-  history: { id: string; label: string; active?: boolean }[]; onNewChat: () => void;
+export type SidebarHistoryItem = {
+  id: string;
+  label: string;
+  active?: boolean;
+};
+
+export function Sidebar({
+  nav,
+  currentNav,
+  onNav,
+  history,
+  onNewChat,
+  onPickHistory,
+  onDeleteHistory,
+  mode = "user",
+}: {
+  nav: NavItem[];
+  currentNav: string;
+  onNav: (id: string) => void;
+  history: SidebarHistoryItem[];
+  onNewChat: () => void;
+  onPickHistory?: (id: string) => void;
+  onDeleteHistory?: (id: string) => void;
   mode?: "user" | "host";
 }) {
   return (
     <aside className="border-r border-border bg-surface-2 flex flex-col min-h-0">
-      <div className="flex items-center gap-2.5 px-4 h-[52px] border-b border-border">
-        <div className="w-6 h-6 rounded-md bg-accent text-accent-fg grid place-items-center font-medium text-[13px] tracking-tight">R</div>
-        <div className="min-w-0 overflow-hidden">
-          <div className="font-medium text-[13.5px] tracking-tight whitespace-nowrap">Right-Hand</div>
-          <div className="text-[11px] text-ink-3">{mode === "host" ? "Host Console" : "Workspace"}</div>
-        </div>
+      <div className="flex items-center px-4 h-[52px] border-b border-border">
+        <img
+          src="/logoright123.png"
+          alt="Right-Hand"
+          className="h-14 w-auto select-none"
+          draggable={false}
+        />
       </div>
 
       <div className="px-2.5 pt-3.5 pb-1.5">
@@ -45,10 +66,35 @@ export function Sidebar({ nav, currentNav, onNav, history, onNewChat, mode = "us
             </div>
           </div>
           <div className="px-2.5 pb-2.5 flex-1 min-h-0 overflow-y-auto">
+            {history.length === 0 && (
+              <div className="px-2.5 py-1.5 text-[12px] text-ink-4 italic">
+                No saved chats yet.
+              </div>
+            )}
             {history.map((h) => (
-              <div key={h.id} className={clsx("px-2.5 py-1.5 rounded-md text-[13px] cursor-pointer truncate",
-                h.active ? "bg-white border border-border text-ink px-2 py-1" : "text-ink-2 hover:bg-surface-3 hover:text-ink")}>
-                {h.label}
+              <div
+                key={h.id}
+                onClick={() => onPickHistory?.(h.id)}
+                className={clsx(
+                  "group relative px-2.5 py-1.5 rounded-md text-[13px] cursor-pointer truncate flex items-center gap-1",
+                  h.active
+                    ? "bg-white border border-border text-ink px-2 py-1"
+                    : "text-ink-2 hover:bg-surface-3 hover:text-ink",
+                )}
+              >
+                <span className="flex-1 truncate">{h.label}</span>
+                {onDeleteHistory && (
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      onDeleteHistory(h.id);
+                    }}
+                    aria-label="Delete chat"
+                    className="opacity-0 group-hover:opacity-100 text-ink-4 hover:text-ink-2 shrink-0 px-1"
+                  >
+                    <Icon name="x" size={12} />
+                  </button>
+                )}
               </div>
             ))}
           </div>

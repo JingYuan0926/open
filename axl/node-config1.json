@@ -1,6 +1,0 @@
-{
-  "PrivateKeyPath": "axl/private1.pem",
-  "Listen": ["tls://0.0.0.0:7001"],
-  "api_port": 9002,
-  "a2a_addr": "http://127.0.0.1"
-}

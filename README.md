@@ -1,5 +1,7 @@
 # Right-Hand AI
 
+> **AnyDesk, but for AI.** Instead of a human helper taking over your machine to fix something, an entire swarm of AI specialists shows up and solves it for you — with your approval at every step.
+
 > **Claude gives one assistant tools. Right-Hand AI gives chat access to a swarm of specialists.**
 
 **Right-Hand AI is a ChatGPT-style chat for getting things done.** You type one request, and the system routes it to a swarm of specialist agents — connected over Gensyn AXL, owned as 0G iNFTs, discovered via ENS — that plan, configure, buy, troubleshoot, or prepare actions on your real machine, with your approval.

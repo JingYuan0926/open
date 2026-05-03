@@ -17,7 +17,11 @@ export function AgentProfile({ agent, paused, onTogglePause }: {
           <h1 className="text-[18px] font-medium tracking-tight m-0">{agent.name}</h1>
           <Badge variant={variant} dot>{label}</Badge>
         </div>
-        <div className="text-ink-3 text-[13px] mt-0.5">{agent.skill} · published {agent.created} · {agent.runtime}</div>
+        <div className="text-ink-3 text-[13px] mt-0.5">
+          {[agent.skill, `published ${agent.created}`, agent.runtime]
+            .filter(Boolean)
+            .join(" · ")}
+        </div>
         <AgentSkillTags skills={agent.skills} />
       </div>
       <div className="flex gap-2">
