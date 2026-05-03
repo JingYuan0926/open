@@ -98,13 +98,13 @@ export function ChatInterface() {
                 if (it.kind === "user") return <UserBubble key={it.id} content={it.content} />;
                 if (it.kind === "demo")
                   return (
-                    <AssistantWrapper key={it.id} modeLabel={modeLabel}>
+                    <AssistantWrapper key={it.id}>
                       <DemoFlow taskLabel={it.label} />
                     </AssistantWrapper>
                   );
                 if (it.kind === "thinking")
                   return (
-                    <AssistantWrapper key={it.id} modeLabel={modeLabel}>
+                    <AssistantWrapper key={it.id}>
                       <ThinkingIndicator prompt={it.prompt} />
                     </AssistantWrapper>
                   );
@@ -113,7 +113,6 @@ export function ChatInterface() {
                     key={it.id}
                     draftId={it.id}
                     prompt={it.prompt}
-                    modeLabel={modeLabel}
                     maxSpecialists={MODE_TO_MAX[it.mode]}
                     onPosted={handlePosted}
                   />
@@ -167,18 +166,16 @@ function StreamingText({
 function AssistantDraft({
   draftId,
   prompt,
-  modeLabel,
   maxSpecialists,
   onPosted,
 }: {
   draftId: string;
   prompt: string;
-  modeLabel: string;
   maxSpecialists: number;
   onPosted: (draftId: string, label: string) => void;
 }) {
   return (
-    <AssistantWrapper modeLabel={modeLabel}>
+    <AssistantWrapper>
       <p className="mb-2.5">
         <StreamingText text="Based on your prompt, here's the plan. Tune the specialists and deadline below — then post on Sepolia to invite matching specialists." />
       </p>
