@@ -102,14 +102,14 @@ function OrchestratorDiagram() {
         overflow="visible"
         aria-hidden
       >
-        <g stroke="#D1D5DB" strokeWidth="0.25" strokeDasharray="0.7 0.7" fill="none">
-          <line x1="50" y1="50" x2="50" y2="16" />
-          <line x1="50" y1="50" x2="20" y2="38" />
-          <line x1="50" y1="50" x2="80" y2="38" />
-          <line x1="50" y1="50" x2="20" y2="62" />
-          <line x1="50" y1="50" x2="80" y2="62" />
-          <line x1="50" y1="50" x2="50" y2="84" />
-          <line x1="50" y1="50" x2="113" y2="50" />
+        <g stroke="#9CA3AF" strokeWidth="0.3" strokeDasharray="0.7 0.7" fill="none">
+          <line x1="50" y1="50" x2="50" y2="16" className="flow-inward" />
+          <line x1="50" y1="50" x2="20" y2="38" className="flow-inward" />
+          <line x1="50" y1="50" x2="80" y2="38" className="flow-inward" />
+          <line x1="50" y1="50" x2="20" y2="62" className="flow-inward" />
+          <line x1="50" y1="50" x2="80" y2="62" className="flow-inward" />
+          <line x1="50" y1="50" x2="50" y2="84" className="flow-inward" />
+          <line x1="50" y1="50" x2="113" y2="50" className="flow-outward" />
         </g>
       </svg>
 
