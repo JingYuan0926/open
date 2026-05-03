@@ -20,7 +20,7 @@ const MODE_TO_MAX: Record<ModeId, number> = {
 };
 
 const THINKING_STEP_MS = 2000;
-const THINKING_STEPS = 4;
+const THINKING_STEPS = 3;
 const THINKING_MS = THINKING_STEP_MS * THINKING_STEPS;
 
 export function ChatInterface() {
@@ -185,20 +185,16 @@ function ThinkingIndicator({ prompt }: { prompt: string }) {
     const short = trimmed.length > 90 ? `${trimmed.slice(0, 87)}…` : trimmed;
     return [
       {
-        label: "Reading your prompt",
-        commentary: `User wants: "${short}". Parsing intent and required skills.`,
+        label: "Reading the prompt",
+        commentary: `User wants: "${short}". Identifying intent and required skills.`,
       },
       {
-        label: "Resolving specialists from ENS",
-        commentary: "Querying righthand.eth subnames for active specialist registrations.",
+        label: "Designing the task",
+        commentary: "Drafting the description, picking specialist count, and pricing the deadline.",
       },
       {
-        label: "Matching skills against the registry",
-        commentary: "Filtering candidates by skill tags, reputation, and per-call price.",
-      },
-      {
-        label: "Drafting the task spec",
-        commentary: "Composing description, deadline, and budget split for swarm mode.",
+        label: "Asking permission from user",
+        commentary: "Spec is ready — review the parameters and post on Sepolia when you're set.",
       },
     ];
   }, [prompt]);
