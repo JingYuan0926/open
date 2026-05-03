@@ -224,7 +224,7 @@ async function broadcastA2A(text: string): Promise<void> {
     const pk = entry.pubkey;
     if (!pk) continue;
 
-    const url = `http://127.0.0.1:${myPort}/a2a/${pk}/`;
+    const url = `http://127.0.0.1:${myPort}/a2a/${pk}`;
     const body = {
       jsonrpc: "2.0",
       id: Date.now(),
@@ -239,12 +239,23 @@ async function broadcastA2A(text: string): Promise<void> {
         },
       },
     };
+    const ctl = new AbortController();
+    const t = setTimeout(() => ctl.abort(), 5000);
     tasks.push(
       fetch(url, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(body),
-      }).catch(() => undefined),
+        signal: ctl.signal,
+      })
+        .then((r) => {
+          clearTimeout(t);
+          if (!r.ok) console.log(`[progress] ✗ ping to ${role} returned HTTP ${r.status}`);
+        })
+        .catch((err) => {
+          clearTimeout(t);
+          console.log(`[progress] ✗ ping to ${role} failed: ${err instanceof Error ? err.message : String(err)}`);
+        }),
     );
   }
   await Promise.all(tasks);
