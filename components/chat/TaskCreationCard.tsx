@@ -222,7 +222,7 @@ export function TaskCreationCard({
             minLabel={`${SPECIALISTS_MIN}`}
             maxLabel={`${SPECIALISTS_MAX}`}
             disabled={isLocked}
-            subLabel={isSwarm ? "Swarm mode" : undefined}
+            hint={isSwarm ? "Swarm mode" : "Solo"}
           />
 
           <BoxedSlider
@@ -298,7 +298,7 @@ export function TaskCreationCard({
           </div>
         )}
 
-        <div className="flex items-center justify-end gap-2 pt-1">
+        <div className="flex items-center gap-2 pt-1">
           {!address ? (
             <ConnectButton.Custom>
               {({ openConnectModal, mounted }) => (
@@ -370,7 +370,6 @@ function BoxedSlider({
   maxLabel,
   disabled,
   hint,
-  subLabel,
 }: {
   label: string;
   value: string;
@@ -383,15 +382,11 @@ function BoxedSlider({
   maxLabel: string;
   disabled?: boolean;
   hint?: string;
-  subLabel?: string;
 }) {
   return (
     <div>
-      <div className="text-[11.5px] uppercase tracking-wide text-ink-3 mb-1">
+      <div className="text-[11.5px] uppercase tracking-wide text-ink-3 mb-1.5">
         {label}
-      </div>
-      <div className="text-[11px] font-medium text-accent leading-tight mb-1.5 min-h-[14px]">
-        {subLabel ?? " "}
       </div>
       <div className="rounded-md border border-border bg-surface-2 px-3 py-2.5 grid gap-2">
         <div className="flex items-center justify-between gap-2">
