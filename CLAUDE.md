@@ -326,9 +326,9 @@ scripts/
 
 ---
 
-# Phase 2a — local browser demo (working) + AXL/MCP routing (built, not yet wired)
+# Phase 2a — AXL/MCP routing (wired and working) + local demo scripts
 
-Phase 1 proved transport. Phase 2a is the **demo of what an AI agent does on the user's machine**: walks AWS console pages → user signs in → continues to EC2 launch wizard. This currently runs **standalone on the user's machine** (no AXL involved). The next step is wiring it as an MCP service so a remote agent can trigger it via AXL.
+Phase 1 proved transport. Phase 2a runs the demo *over the AXL mesh*: a remote agent on Mac B/C calls into the user's Mac, the user's Mac auto-approves, runs the demo scripts, and live-narrates progress + dialogue back to every connected terminal as colour-coded chat. The standalone scripts still work for solo dev.
 
 ## What's working today (standalone, on the user's machine)
 
@@ -420,42 +420,91 @@ Plus AWS access key in `~/.aws/credentials`, EC2 keypair `nanoclaw-key` saved as
 - **`demo:openclaw` uses PM2 for survival.** `pm2 start ./start.sh --name openclaw --interpreter bash` + `pm2 save` daemonizes the bot under PM2's supervisor. Survives SSH disconnect; **does NOT survive instance reboot** unless you also run `pm2 startup` and follow the sudo command it prints. The script intentionally skips `pm2 startup` because we can't auto-respond to its sudo prompt.
 - **State file handoff between `aws-2` and `openclaw`.** `aws-2` writes `$TMPDIR/openclaw-demo-state.json` with `{ instanceId, publicIp, region, keyPath }`. `openclaw` (outer mode) reads it. If you skip `aws-2` (e.g. you provisioned the box some other way), pass the IP explicitly: `npm run demo:openclaw -- 1.2.3.4` or `PUBLIC_IP=1.2.3.4 npm run demo:openclaw`.
 
-## What's parked, ready to wire (the AXL/MCP integration)
+## The AXL/MCP integration (wired and working)
 
-The full Phase 2a vision was: a remote agent on Mac B (`agent-b`) calls AXL's `/mcp/<user-peer>/aws` endpoint → AXL forwards through Yggdrasil to user's Mac → vendored `mcp-router.py` (port 9003) dispatches → `aws.ts` MCP server (port 9100) prompts approval → runs the demo flow.
+End-to-end flow: agent on Mac B/C calls `npm run mcp:demo:<step>` → AXL routes through Yggdrasil to user's Mac → `mcp-router.py` (port 9003) dispatches → `aws.ts` (port 9100) auto-approves → spawns the corresponding `tsx scripts/demo-*.ts` as a child process → progress + dialogue stream back to every peer's `axl:start` terminal as live chat.
 
-These pieces exist:
-- [`axl/mcp-router.py`](axl/mcp-router.py) — vendored verbatim from `gensyn-ai/axl/integrations/mcp_routing/`
-- [`axl/mcp-servers/aws.ts`](axl/mcp-servers/aws.ts) — Express MCP service exposing 4 tools (`open_console`, `launch_instance`, `show_in_console`, `install_nanoclaw`)
-- [`axl/mcp-servers/permission.ts`](axl/mcp-servers/permission.ts) — terminal y/n approval gate (serialised via promise chain so concurrent calls don't race on stdin)
-- [`scripts/mcp-call.ts`](scripts/mcp-call.ts) — sender CLI: `npm run mcp:call -- <role> <svc> <tool> '<args>'`
-- [`scripts/setup-axl.sh`](scripts/setup-axl.sh) already adds `router_addr` + `router_port=9003` to `node-config.json` for the user role, and pip-installs `aiohttp`
-- [`scripts/axl-start.sh`](scripts/axl-start.sh) already background-starts `mcp-router.py` + `aws.ts` on the user role and monitors them in the polling loop
+### MCP service: `aws` (3 tools, each wraps a demo script)
 
-What's missing for the AXL integration to work:
-1. The aforementioned `@aws-sdk/client-ec2` + `ssh2` deps so `aws.ts` compiles
-2. Replace the hardcoded `aws.ts` tools with calls into the **standalone demo scripts** above (so the AXL-routed flow is the same browser walk + SDK launch + SSH install we already have working locally) — i.e. pivot `aws.ts`'s tool implementations from "do the work directly" to "spawn `tsx scripts/demo-before.ts` etc. as child processes"
-3. Confirm the AXL-side wiring on a real 3-Mac mesh: agent-b runs `mcp-call user aws walk_through` → user's Mac shows approval prompt + runs the demo
+[`axl/mcp-servers/aws.ts`](axl/mcp-servers/aws.ts) exposes:
 
-### Verified MCP request shape (from gensyn-ai/axl/integrations/mcp_routing/mcp_router.py)
+| tool | spawns | runtime | demo step |
+|---|---|---|---|
+| `aws_signin` | `tsx scripts/demo-aws-1.ts` | ~3 s | open AWS sign-in pages on user's Chrome |
+| `provision_ec2` | `tsx scripts/demo-aws-2.ts` | ~60–80 s | always-fresh EC2 (terminates the previous demo instance first), keypair + SG + run-instances + wait running + 30s sshd; writes state file |
+| `install_openclaw` | `tsx scripts/demo-openclaw.ts` | ~3 s outer + ~2 min inner | outer: spawns Terminal.app on user's Mac and exits; inner: SSH-installs OpenClaw under PM2 + opens Telegram bot URL on user's browser |
+
+Wrappers in [`scripts/mcp-demo.sh`](scripts/mcp-demo.sh) → `npm run mcp:demo:signin` / `:provision` / `:install`. Sender resolves target pubkey from `axl/peers.json`, posts to local AXL `/mcp/<pubkey>/aws`. None of `@aws-sdk/client-ec2` / `ssh2` are needed — the demo scripts shell out to system `aws` and `ssh`.
+
+### Live demo dialogue (the chat that plays across all 3 axl:start terminals)
+
+Each MCP call produces a scripted multi-machine conversation rendered in real time. Driven by:
+
+- **Per-tool flavour text** in [`scripts/mcp-call.ts`](scripts/mcp-call.ts): `startingText()`, `ackText()`, `directiveText()` give each of the 3 tools its own announcement strings. Bodies are bare ("starting EC2 provision") — no role-name prefix, no prescriptive "you do X" directives.
+- **Per-role auto-replies** in [`axl/agent.ts`](axl/agent.ts) `CHAT_RULES`: each role responds to specific incoming kind/tool/pattern matches with a delayed broadcast. Examples: agent-c on `starting:aws_signin` (delay 1.5 s) → "ok, fetching the Telegram bot ID + token while you log in"; agent-c on `starting:provision_ec2` (delay 10 s) → "got the bot token ready, waiting on you"; agent-b matches the regex `/got the bot token/` (delay 2 s) → "still provisioning, almost there". Reply chains capped at depth 2 to prevent loops.
+- **Real-time progress pings** in `aws.ts`: while a long-running tool runs, parses the script's stdout (matches `━━ [N/M] step`, `→ arrow`, `✓ ok`, `✗ fail`) and broadcasts each transition within 1 s, plus a 20 s heartbeat for AXL session warmth. So `provision_ec2`'s 6 steps reach every peer's screen near-instantly instead of waiting for the call to return.
+- **Deferred truthful announcements**: the "@user OpenClaw deploy complete — Telegram bot is live at <URL>" line is broadcast from `demo-openclaw.ts` *inner* mode (after the SSH install + `openUrl` actually succeeded), not from the outer-mode MCP ack — so the announcement is never premature.
+
+### Per-terminal POV + colour scheme
+
+Each Mac's `axl:start` log renders the same A2A traffic from its own first-person POV. Local role is always "me" (magenta); other roles keep stable colours so the audience can scan three side-by-side terminals at a glance.
+
+| role | colour |
+|---|---|
+| me (local) | magenta / purple |
+| user | green |
+| agent-b | yellow |
+| agent-c | blue |
+| **bystander** (overheard directive between two other roles) | bright cyan |
+
+Three categories of line:
+
+| metadata | rendered as | example |
+|---|---|---|
+| `internal: true` | `[me] doing X` (no arrow) | local-only AI monologue, never broadcast |
+| `directed: true, target: <role>` | sender's screen `[me → <target>]`, target's screen `[<sender> → me]`, bystander's screen `[<sender> → <target>]` cyan | `mcp-call.ts` `sendDirective()` blasts to ALL peers; agent.ts checks `meta.target` to pick the right rendering |
+| no `target` (broadcast) | `[me → all]` on sender, `[<sender> → me]` on others | progress pings, starting/ack |
+
+Auto-reply broadcasts from `agent.ts` set `metadata.replyDepth` so the rule engine caps chains at 2 hops without needing an `autoReply` blacklist.
+
+### Script terminal vs axl:start terminal — the rule
+
+**Hard rule**: the script terminal where you ran `mcp:demo:*` shows only the call URL + `✓ done` or `✗ <reason>`. All chat (own outbound, others' inbound, progress pings, auto-reply triggers) lands in the **axl:start** terminal. Each terminal has one job — script does action, axl:start narrates conversation.
+
+This is enforced in `mcp-call.ts`: it broadcasts (so other peers see the message) but doesn't `console.log` the chat lines locally. To make sender's *own* outbound also appear in their local axl:start, broadcasts loop through their own pubkey too — local AXL forwards back to local agent.ts on port 9004, which logs it as `[me → all]`.
+
+### Auto-approve and timeout config
+
+- **Auto-approve is the default** in [`axl/mcp-servers/permission.ts`](axl/mcp-servers/permission.ts). No keystroke required. Set `MCP_REQUIRE_APPROVAL=1` to bring back the y/n prompt for filming the gate.
+- **Router forward timeout = 600 s** ([`axl/mcp-router.py`](axl/mcp-router.py), bumped from upstream's 30 s). Covers the ~60 s `provision_ec2` runtime end-to-end.
+- **AXL's own per-socket idle timeout is ~60 s** (`Connection read timeout: 1m0s` from the node startup log). For `provision_ec2`, this is right at the edge — the call can still 502 at the AXL transport layer even though the script succeeded on user's Mac. The per-step progress broadcasts (1 s cadence) keep traffic flowing and mitigate this in practice; the state file is the source of truth for `install_openclaw` regardless of whether cedric's terminal got its JSON-RPC ack.
+
+### `mcp-call.ts` polling endpoint
+
+[`axl/agent.ts`](axl/agent.ts) keeps an in-memory ring of the last 200 inbound A2A messages and exposes `GET /messages?since=<seq>`. Currently unused by `mcp-call.ts` (we keep the script terminal silent), but available for any future UI subscriber that wants a live tail of the chat.
+
+### Verified MCP request shape
 
 Sender:
 ```
 POST http://127.0.0.1:9002/mcp/<peer-pubkey>/aws
 { "jsonrpc":"2.0", "id":1, "method":"tools/call", "params":{"name":"...","arguments":{...}} }
 ```
-
 AXL forwards to `router_addr:router_port` (`http://127.0.0.1:9003/route`):
 ```
 { "service":"aws", "request": <jsonrpc-above>, "from_peer_id":"<28hex>" }
 ```
-
-Router POSTs the inner `request` body to the registered service's `/mcp` endpoint with headers `X-From-Peer-Id` (use `matchesPeer()` from `axl/axl.ts` — header is truncated to ~28 hex), `X-Service`. Service prompts approval, runs the tool, returns:
+Router POSTs the inner `request` body to the registered service's `/mcp` endpoint with headers `X-From-Peer-Id` (truncated to ~28 hex; use `matchesPeer()` from [`axl/axl.ts`](axl/axl.ts)), `X-Service`. Service auto-approves, runs the tool, returns:
 ```
 { "jsonrpc":"2.0", "id":1, "result":{ "content":[{"type":"text","text":"<json-stringified result>"}] } }
 ```
-
 Router wraps as `{response: <jsonrpc>, error: null}` and the response propagates back through AXL to the sender.
+
+### Gotchas (Phase 2a-specific)
+
+- **`peers.json` is the discovery source for broadcasts.** A stale agent-c pubkey on cedric's side silently kills cedric → agent-c broadcasts (Yggdrasil routes to a dead pubkey, fetch times out, error swallowed by abort timeout). Diagnostic: `curl -s http://127.0.0.1:9002/topology | jq -r .our_public_key` on each Mac and compare against `axl/peers.json`.
+- **`axl/node-config*.json` and `axl/*.pem` are now gitignored** (broadened from just `axl/node-config.json`). Two stale loopback configs (`node-config1.json`, `node-config2.json`) were untracked. Each Mac regenerates these locally via `npm run axl:setup`.
+- **GossipSub is *not* a built-in AXL HTTP API.** The `gensyn-ai/axl` repo ships a Python *example* (`examples/python-client/gossipsub/gossipsub.py`) that implements the meshsub algorithm on top of AXL's basic `POST /send` / `GET /recv`. To adopt: port ~300 lines to TS, OR vendor the Python as a sidecar. For 3 fixed peers + known pubkeys (current state), per-peer A2A POSTs work fine. Reconsider for Phase 2b's dynamic-peer scenarios.
 
 ---
 
