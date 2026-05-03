@@ -124,29 +124,36 @@ function OrchestratorDiagram() {
 
         <g fill="#60A5FA" filter="url(#blueGlow)">
           <circle r="0.9" cx="50" cy="16">
-            <animate attributeName="cy" values="16;50" dur="1.5s" begin="0s" repeatCount="indefinite" />
+            <animate attributeName="cy" values="16;50;50" keyTimes="0;0.5;1" dur="3s" repeatCount="indefinite" />
+            <animate attributeName="opacity" values="1;1;0;0" keyTimes="0;0.5;0.501;1" dur="3s" repeatCount="indefinite" />
           </circle>
           <circle r="0.9" cx="20" cy="38">
-            <animate attributeName="cx" values="20;50" dur="1.5s" begin="-0.25s" repeatCount="indefinite" />
-            <animate attributeName="cy" values="38;50" dur="1.5s" begin="-0.25s" repeatCount="indefinite" />
+            <animate attributeName="cx" values="20;50;50" keyTimes="0;0.5;1" dur="3s" repeatCount="indefinite" />
+            <animate attributeName="cy" values="38;50;50" keyTimes="0;0.5;1" dur="3s" repeatCount="indefinite" />
+            <animate attributeName="opacity" values="1;1;0;0" keyTimes="0;0.5;0.501;1" dur="3s" repeatCount="indefinite" />
           </circle>
           <circle r="0.9" cx="80" cy="38">
-            <animate attributeName="cx" values="80;50" dur="1.5s" begin="-0.5s" repeatCount="indefinite" />
-            <animate attributeName="cy" values="38;50" dur="1.5s" begin="-0.5s" repeatCount="indefinite" />
+            <animate attributeName="cx" values="80;50;50" keyTimes="0;0.5;1" dur="3s" repeatCount="indefinite" />
+            <animate attributeName="cy" values="38;50;50" keyTimes="0;0.5;1" dur="3s" repeatCount="indefinite" />
+            <animate attributeName="opacity" values="1;1;0;0" keyTimes="0;0.5;0.501;1" dur="3s" repeatCount="indefinite" />
           </circle>
           <circle r="0.9" cx="20" cy="62">
-            <animate attributeName="cx" values="20;50" dur="1.5s" begin="-0.75s" repeatCount="indefinite" />
-            <animate attributeName="cy" values="62;50" dur="1.5s" begin="-0.75s" repeatCount="indefinite" />
+            <animate attributeName="cx" values="20;50;50" keyTimes="0;0.5;1" dur="3s" repeatCount="indefinite" />
+            <animate attributeName="cy" values="62;50;50" keyTimes="0;0.5;1" dur="3s" repeatCount="indefinite" />
+            <animate attributeName="opacity" values="1;1;0;0" keyTimes="0;0.5;0.501;1" dur="3s" repeatCount="indefinite" />
           </circle>
           <circle r="0.9" cx="80" cy="62">
-            <animate attributeName="cx" values="80;50" dur="1.5s" begin="-1s" repeatCount="indefinite" />
-            <animate attributeName="cy" values="62;50" dur="1.5s" begin="-1s" repeatCount="indefinite" />
+            <animate attributeName="cx" values="80;50;50" keyTimes="0;0.5;1" dur="3s" repeatCount="indefinite" />
+            <animate attributeName="cy" values="62;50;50" keyTimes="0;0.5;1" dur="3s" repeatCount="indefinite" />
+            <animate attributeName="opacity" values="1;1;0;0" keyTimes="0;0.5;0.501;1" dur="3s" repeatCount="indefinite" />
           </circle>
           <circle r="0.9" cx="50" cy="84">
-            <animate attributeName="cy" values="84;50" dur="1.5s" begin="-1.25s" repeatCount="indefinite" />
+            <animate attributeName="cy" values="84;50;50" keyTimes="0;0.5;1" dur="3s" repeatCount="indefinite" />
+            <animate attributeName="opacity" values="1;1;0;0" keyTimes="0;0.5;0.501;1" dur="3s" repeatCount="indefinite" />
           </circle>
           <circle r="0.9" cx="50" cy="50">
-            <animate attributeName="cx" values="50;113" dur="1.5s" begin="0s" repeatCount="indefinite" />
+            <animate attributeName="cx" values="50;50;113" keyTimes="0;0.5;1" dur="3s" repeatCount="indefinite" />
+            <animate attributeName="opacity" values="0;0;1;1" keyTimes="0;0.499;0.5;1" dur="3s" repeatCount="indefinite" />
           </circle>
         </g>
       </svg>
