@@ -30,6 +30,7 @@ interface INameWrapper {
 
 interface IPublicResolver {
     function setText(bytes32 node, string calldata key, string calldata value) external;
+    function setAddr(bytes32 node, address a) external;
 }
 
 /// @title SpecialistRegistrar
@@ -59,10 +60,13 @@ contract SpecialistRegistrar {
         string version;
     }
 
-    /// @notice One row of the per-owner registration log.
+    /// @notice One row of the registration log. `owner` is always the
+    /// `msg.sender` of the `register` call that created it; redundant in the
+    /// per-owner mapping, useful in the global list.
     struct Registration {
         string  label;
         bytes32 node;
+        address owner;
     }
 
     /// @dev Per-address list of every specialist this contract minted on
@@ -72,6 +76,11 @@ contract SpecialistRegistrar {
     /// observe NameWrapper transfers, so live tracking would need a custom
     /// token contract.)
     mapping(address => Registration[]) private _ownedByCaller;
+
+    /// @dev Global registration log — every successful `register` call
+    /// appends here so the frontend can list every specialist ever minted
+    /// through this contract with a single view call.
+    Registration[] private _allRegistrations;
 
     event SpecialistRegistered(
         bytes32 indexed node,
@@ -120,12 +129,24 @@ contract SpecialistRegistrar {
         resolver.setText(node, KEY_PRICE,         records.price);
         resolver.setText(node, KEY_VERSION,       records.version);
 
+        // Point the ENS `addr` record at the registering wallet so that any
+        // payment sent to `<label>.righthand.eth` resolves to the owner. Must
+        // be done before the safeTransferFrom — once the wrapper transfers
+        // ownership away, this contract can no longer write to the resolver.
+        resolver.setAddr(node, msg.sender);
+
         // Hand the wrapped token to the caller.
         nameWrapper.safeTransferFrom(address(this), msg.sender, uint256(node), 1, "");
 
-        // Record into the caller's registration log so the frontend can
-        // discover it with a single view call (no event-log scan needed).
-        _ownedByCaller[msg.sender].push(Registration({ label: label, node: node }));
+        // Record into both the per-caller log and the global log so the
+        // frontend can do single-call discovery in either direction.
+        Registration memory entry = Registration({
+            label: label,
+            node: node,
+            owner: msg.sender
+        });
+        _ownedByCaller[msg.sender].push(entry);
+        _allRegistrations.push(entry);
 
         emit SpecialistRegistered(node, msg.sender, label);
     }
@@ -140,6 +161,20 @@ contract SpecialistRegistrar {
     /// @notice Number of registrations attributed to `owner`.
     function ownedCount(address owner) external view returns (uint256) {
         return _ownedByCaller[owner].length;
+    }
+
+    /// @notice Every specialist ever registered through this contract,
+    /// across every owner, in chronological order (oldest first). Same
+    /// "registration history, not current ownership" caveat applies.
+    function getAll() external view returns (Registration[] memory) {
+        return _allRegistrations;
+    }
+
+    /// @notice Total number of registrations ever made. For paginated reads
+    /// when the list grows (which happens to be all the same data as
+    /// `getAll().length`, but cheap to call standalone).
+    function totalCount() external view returns (uint256) {
+        return _allRegistrations.length;
     }
 
     // ─── ERC1155 receiver hooks (needed to accept the freshly minted token) ─

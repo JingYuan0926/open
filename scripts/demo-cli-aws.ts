@@ -241,6 +241,15 @@ ${SETUP_CMD}
   info(`SSH:         ssh -i ${KEY_PATH} ec2-user@${publicIp}`);
   info(`Region:      ${REGION}`);
 
+  // Drop a marker so the chat UI's /api/demo/status can know we're done.
+  const markerPath = process.env.OPENCLAW_DEMO_MARKER ?? `${process.env.TMPDIR ?? "/tmp"}/openclaw-demo-done.flag`;
+  try {
+    writeFileSync(markerPath, JSON.stringify({ instanceId, publicIp, region: REGION, at: new Date().toISOString() }));
+    info(`Marker written: ${markerPath}`);
+  } catch (e) {
+    info(`(could not write marker: ${e instanceof Error ? e.message : String(e)})`);
+  }
+
   if (TERMINATE) {
     aws(`ec2 terminate-instances --instance-ids ${instanceId} --region ${REGION}`);
     ok(`terminate sent for ${instanceId}`);
