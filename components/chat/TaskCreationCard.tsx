@@ -348,7 +348,7 @@ export function TaskCreationCard({
   );
 }
 
-function SliderRow({
+function BoxedSlider({
   label,
   value,
   min,
@@ -374,30 +374,30 @@ function SliderRow({
   hint?: string;
 }) {
   return (
-    <div className="grid gap-1.5">
-      <div className="flex items-baseline justify-between">
-        <span className="text-[11.5px] uppercase tracking-wide text-ink-3">
-          {label}
-        </span>
-        <span className="text-[15px] font-mono font-semibold text-ink tabular-nums">
+    <div>
+      <div className="text-[11.5px] uppercase tracking-wide text-ink-3 mb-1.5">
+        {label}
+      </div>
+      <div className="rounded-md border border-border bg-surface-2 px-3 py-2.5 grid gap-2">
+        <span className="text-[18px] font-mono font-semibold text-ink tabular-nums leading-none">
           {value}
         </span>
+        <input
+          type="range"
+          min={min}
+          max={max}
+          step={step}
+          value={raw}
+          onChange={(e) => onChange(Number(e.target.value))}
+          disabled={disabled}
+          className="w-full h-1.5 accent-accent cursor-pointer disabled:cursor-not-allowed disabled:opacity-50"
+        />
+        <div className="flex items-center justify-between text-[10px] text-ink-4 font-mono">
+          <span>{minLabel}</span>
+          <span>{maxLabel}</span>
+        </div>
+        {hint && <p className="text-[10.5px] text-ink-3 leading-tight">{hint}</p>}
       </div>
-      <input
-        type="range"
-        min={min}
-        max={max}
-        step={step}
-        value={raw}
-        onChange={(e) => onChange(Number(e.target.value))}
-        disabled={disabled}
-        className="w-full h-1.5 accent-accent cursor-pointer disabled:cursor-not-allowed disabled:opacity-50"
-      />
-      <div className="flex items-center justify-between text-[10.5px] text-ink-4 font-mono">
-        <span>{minLabel}</span>
-        <span>{maxLabel}</span>
-      </div>
-      {hint && <p className="text-[11px] text-ink-3 leading-tight">{hint}</p>}
     </div>
   );
 }
