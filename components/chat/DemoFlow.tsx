@@ -32,14 +32,11 @@ const STEPS = [
 type Phase =
   | "introducing"      // searching loading + reveal animation
   | "ready"            // both accepted, waiting for user
-  | "axl-prompt"       // local AXL not detected — must download first
-  | "axl-downloading"  // mocked progress
   | "confirm"          // review steps before kicking off execution
   | "running"          // demo executing
   | "done";
 
 const RUNNING_TIMEOUT_MS = 30_000;
-const AXL_DOWNLOAD_MS = 1800;
 
 // ENS lookup link — server returns JSON with all six text records + addr.
 function ensLink(name: string): string {
@@ -55,17 +52,6 @@ export function DemoFlow({ taskLabel }: { taskLabel: string }) {
   // the specialist rows. Flips to false once results land.
   const [searching, setSearching] = React.useState(true);
   const [error, setError] = React.useState<string | null>(null);
-  // Per-session only — the AXL download prompt re-plays on every page
-  // load so the demo always shows that step. Once downloaded inside one
-  // session, subsequent Start Now clicks skip the modal.
-  const [axlDownloaded, setAxlDownloaded] = React.useState(false);
-
-  // Clear any leftover flag from previous deploys that used localStorage.
-  React.useEffect(() => {
-    try { window.localStorage.removeItem("rh:axl-downloaded"); }
-    catch { /* fine */ }
-  }, []);
-
   // 1) Searching state for ~2s ("discovering specialists on the mesh").
   // 2) Reveal specialists one-by-one as they "accept".
   // 3) Flip to ready.
@@ -87,21 +73,7 @@ export function DemoFlow({ taskLabel }: { taskLabel: string }) {
 
   const onClickStartNow = () => {
     setError(null);
-    if (!axlDownloaded) {
-      setPhase("axl-prompt");
-      return;
-    }
     setPhase("confirm");
-  };
-
-  const onClickDownloadAxl = () => {
-    setPhase("axl-downloading");
-    // Mocked — no real download. After progress completes, mark in-memory
-    // (no localStorage so the prompt re-plays on every page load).
-    setTimeout(() => {
-      setAxlDownloaded(true);
-      setPhase("confirm");
-    }, AXL_DOWNLOAD_MS);
   };
 
   const onClickStartExecution = () => {
@@ -225,56 +197,6 @@ export function DemoFlow({ taskLabel }: { taskLabel: string }) {
           </div>
         </div>
       )}
-
-      {/* AXL not downloaded prompt */}
-      <Modal open={phase === "axl-prompt"} onClose={() => setPhase("ready")}>
-        <div className="grid gap-3.5">
-          <div className="flex items-center gap-2">
-            <Icon name="alert" size={16} className="text-amber-600" />
-            <h3 className="text-[15px] font-semibold">AXL node not running</h3>
-          </div>
-          <p className="text-[13px] text-ink-2">
-            The swarm coordinates over the AXL P2P mesh. Your machine needs the
-            AXL node running locally before agents can reach in. Without it,
-            this <em>can&rsquo;t work</em>.
-          </p>
-          <p className="text-[12.5px] text-ink-3">
-            One-time install — under a minute. Bundles a local AXL daemon + MCP
-            servers + permission UI.
-          </p>
-          <div className="flex justify-end pt-1">
-            <Button variant="primary" icon="arrow-up-right" onClick={onClickDownloadAxl}>
-              Download AXL node
-            </Button>
-          </div>
-        </div>
-      </Modal>
-
-      {/* AXL mocked download progress */}
-      <Modal open={phase === "axl-downloading"}>
-        <div className="grid gap-3.5">
-          <div className="flex items-center gap-2">
-            <span className="w-2 h-2 rounded-full bg-amber-500 pulse-dot" />
-            <h3 className="text-[15px] font-semibold">Downloading AXL node…</h3>
-          </div>
-          <p className="text-[12.5px] text-ink-3">
-            Fetching the connector binary, generating an ed25519 keypair, peering
-            with Gensyn&rsquo;s public bootstrap nodes.
-          </p>
-          <div className="h-2 rounded-full bg-surface-3 overflow-hidden">
-            <div
-              className="h-full bg-emerald-500"
-              style={{ width: "100%", animation: `axlBar ${AXL_DOWNLOAD_MS}ms linear` }}
-            />
-          </div>
-          <style jsx>{`
-            @keyframes axlBar {
-              from { width: 0%; }
-              to { width: 100%; }
-            }
-          `}</style>
-        </div>
-      </Modal>
 
       {/* Confirm — review steps and start. No payment here; budget was
           already escrowed on Sepolia by Pay & Post. */}
