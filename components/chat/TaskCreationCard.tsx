@@ -266,27 +266,27 @@ export function TaskCreationCard({
             <div className="flex items-center justify-between">
               <span>Specialists × {maxSpecialists}</span>
               <span className="inline-flex items-center gap-1 font-mono tabular-nums text-ink">
-                {fmtEth(breakdown.specialistsCost)} <UsdcIcon size={11} /> USDC
+                {fmtEth(breakdown.specialistsCost)} <UsdcIcon size={18} /> USDC
               </span>
             </div>
             {isSwarm && (
               <div className="flex items-center justify-between pl-3">
                 <span className="text-ink-3">— Swarm mode</span>
                 <span className="inline-flex items-center gap-1 font-mono tabular-nums text-ink">
-                  +{fmtEth(breakdown.swarmCost)} <UsdcIcon size={11} /> USDC
+                  +{fmtEth(breakdown.swarmCost)} <UsdcIcon size={18} /> USDC
                 </span>
               </div>
             )}
             <div className="flex items-center justify-between">
               <span>Speed boost × {speedLevel}</span>
               <span className="inline-flex items-center gap-1 font-mono tabular-nums text-ink">
-                +{fmtEth(breakdown.speedCost)} <UsdcIcon size={11} /> USDC
+                +{fmtEth(breakdown.speedCost)} <UsdcIcon size={18} /> USDC
               </span>
             </div>
             <div className="border-t border-border mt-1.5 pt-2 flex items-center justify-between">
               <span className="text-[13px] font-medium text-ink">Total</span>
               <span className="inline-flex items-center gap-1 text-[16px] font-mono font-semibold text-ink tabular-nums">
-                {fmtEth(breakdown.total)} <UsdcIcon size={13} /> USDC
+                {fmtEth(breakdown.total)} <UsdcIcon size={22} /> USDC
               </span>
             </div>
           </div>

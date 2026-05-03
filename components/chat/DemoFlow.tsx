@@ -116,8 +116,8 @@ async function payAgentOnce(input: {
   const xPayment = btoa(
     JSON.stringify({
       x402Version: 1,
-      scheme: "native",
-      network: "0g-galileo-testnet",
+      scheme: "exact",
+      network: "base-sepolia",
       payload: {
         confirm: true,
         payTo: accept.payTo,
@@ -363,7 +363,7 @@ export function DemoFlow({ taskLabel }: { taskLabel: string }) {
               <div key={p.txHash} className="text-[12px] text-ink-2 flex items-center gap-2 flex-wrap">
                 <span className="font-medium">{p.specialist.name}:</span>
                 <span className="inline-flex items-center gap-1 font-mono">
-                  {p.amount} <UsdcIcon size={11} /> USDC
+                  {p.amount} <UsdcIcon size={18} /> USDC
                 </span>
                 <span>·</span>
                 <span className="text-ink-3">Transaction hash:</span>
@@ -469,7 +469,7 @@ export function DemoFlow({ taskLabel }: { taskLabel: string }) {
               <div key={s.id} className="flex items-center justify-between">
                 <span>{s.name}</span>
                 <span className="inline-flex items-center gap-1 font-mono tabular-nums">
-                  {s.priceOG} <UsdcIcon size={12} /> USDC
+                  {s.priceOG} <UsdcIcon size={18} /> USDC
                 </span>
               </div>
             ))}
@@ -532,7 +532,7 @@ export function DemoFlow({ taskLabel }: { taskLabel: string }) {
           <p className="text-[13px] text-ink-2">
             Each specialist&rsquo;s royalty is on chain. Total{" "}
             <span className="font-mono">
-              {totalUsdc} <UsdcIcon size={11} /> USDC
+              {totalUsdc} <UsdcIcon size={18} /> USDC
             </span>{" "}
             settled.
           </p>
