@@ -222,20 +222,20 @@ export default function Home() {
 
   return (
     <div className="min-h-screen bg-bg text-ink">
-      <section className="px-6 lg:px-12 pt-28 pb-24">
-        <div className="max-w-7xl mx-auto grid lg:grid-cols-2 gap-12 items-center">
+      <section className="px-4 sm:px-6 lg:px-12 pt-14 sm:pt-20 lg:pt-28 pb-16 sm:pb-20 lg:pb-24">
+        <div className="max-w-7xl 2xl:max-w-[1440px] mx-auto grid lg:grid-cols-2 gap-10 lg:gap-12 items-center">
           <div className="lg:pl-8">
             <span className="inline-flex items-center gap-2 px-3.5 py-1.5 bg-surface border border-border rounded-full text-xs text-ink-2">
               <SparkleIcon size={14} />
               Multiple AI. One purpose.
             </span>
-            <h1 className="mt-6 text-6xl lg:text-7xl font-bold tracking-tight">Right Hand AI</h1>
-            <p className="mt-6 text-3xl lg:text-[2.5rem] text-ink-3 leading-tight font-medium">
+            <h1 className="mt-5 sm:mt-6 text-5xl sm:text-6xl lg:text-7xl font-bold tracking-tight">Right Hand AI</h1>
+            <p className="mt-5 sm:mt-6 text-2xl sm:text-3xl lg:text-[2.5rem] text-ink-3 leading-tight font-medium">
               Multiple AI agents.<br />
               Working together.<br />
               One goal achieved.
             </p>
-            <p className="mt-6 text-base text-ink-3 max-w-md leading-relaxed">
+            <p className="mt-5 sm:mt-6 text-sm sm:text-base text-ink-3 max-w-md leading-relaxed">
               Right Hand AI connects specialized AI agents, orchestrates their collaboration, and delivers results—faster, smarter, and seamlessly.
             </p>
             <div className="mt-8 flex flex-wrap items-center gap-3">
@@ -260,15 +260,15 @@ export default function Home() {
         </div>
       </section>
 
-      <section className="px-6 lg:px-12 py-20">
-        <div className="max-w-7xl mx-auto">
+      <section className="px-4 sm:px-6 lg:px-12 py-12 sm:py-16 lg:py-20">
+        <div className="max-w-7xl 2xl:max-w-[1440px] mx-auto">
           <div className="text-center max-w-2xl mx-auto">
             <p className="text-sm text-ink-3">Built for the future of work</p>
-            <h2 className="mt-3 text-3xl lg:text-4xl font-bold tracking-tight">
+            <h2 className="mt-3 text-2xl sm:text-3xl lg:text-4xl font-bold tracking-tight">
               AI agents working together, just like a team
             </h2>
           </div>
-          <div className="mt-12 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+          <div className="mt-10 sm:mt-12 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
             <Feature
               icon={<UsersIcon />}
               title="Collaborative AI"
