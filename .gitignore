@@ -24,11 +24,14 @@
 .DS_Store
 *.pem
 
-# AXL
+# AXL — per-machine artefacts, NEVER commit
 node
 axl/dist/
 .axl/
 axl/node-config.json
+axl/node-config*.json
+axl/private*.pem
+axl/*.pem
 
 # debug
 npm-debug.log*
