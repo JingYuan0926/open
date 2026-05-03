@@ -40,6 +40,19 @@ PEERS="$ROOT/axl/peers.json"
 API_PORT=$(jq -r ".\"$ROLE\".apiPort" "$PEERS")
 A2A_PORT=9004
 
+# ---------- Pick the right Python for mcp-router.py ----------
+# setup-axl.sh writes .axl/python-path when it falls back to conda. Otherwise
+# we use system python3 (which has aiohttp via pip --user).
+PY_BIN="python3"
+if [[ -f "$ROOT/.axl/python-path" ]]; then
+  CANDIDATE=$(cat "$ROOT/.axl/python-path" 2>/dev/null || true)
+  if [[ -n "$CANDIDATE" && -x "$CANDIDATE" ]]; then
+    PY_BIN="$CANDIDATE"
+  else
+    warn ".axl/python-path is stale — re-run 'npm run axl:setup'."
+  fi
+fi
+
 # ---------- Pre-flight: kill any orphaned processes from previous runs ----------
 say "Pre-flight: cleaning up any orphan AXL / agent / MCP processes…"
 pkill -f "${ROOT}/.axl/node" 2>/dev/null || true
@@ -142,8 +155,8 @@ if [[ "$ROLE" == "user" ]]; then
   elif ! command -v python3 >/dev/null 2>&1; then
     warn "python3 missing — can't start mcp-router.py. brew install python."
   else
-    say "Starting MCP router (port 9003) …"
-    python3 "$ROOT/axl/mcp-router.py" --port 9003 &
+    say "Starting MCP router (port 9003) using $PY_BIN …"
+    "$PY_BIN" "$ROOT/axl/mcp-router.py" --port 9003 &
     ROUTER_PID=$!
     sleep 1
     say "Starting aws MCP server (port 9100) …"
@@ -176,7 +189,7 @@ while true; do
   fi
   if [[ -n "$ROUTER_PID" ]] && ! kill -0 "$ROUTER_PID" 2>/dev/null; then
     warn "MCP router ($ROUTER_PID) exited. Restarting…"
-    python3 "$ROOT/axl/mcp-router.py" --port 9003 &
+    "$PY_BIN" "$ROOT/axl/mcp-router.py" --port 9003 &
     ROUTER_PID=$!
     say "MCP router restarted (pid=$ROUTER_PID)."
   fi

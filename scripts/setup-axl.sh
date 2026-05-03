@@ -152,14 +152,46 @@ say "Wrote $CONFIG (role=$ROLE, public-bootstrap mode)"
 say "All 3 Macs join Gensyn's public mesh — no LAN coordination needed."
 
 # ---------- 8b. Phase 2: Python deps for the MCP router (user role only) ----------
+# Order of preference:
+#   1. If `aiohttp` is already importable from `python3`, do nothing.
+#   2. Try `pip install --user aiohttp` (the original path).
+#   3. If pip is blocked by PEP 668 (modern macOS / Homebrew Python), fall back
+#      to a conda env named `openclaw-axl`. We persist the env's Python path to
+#      .axl/python-path so axl-start.sh uses the right interpreter without
+#      having to source `conda activate`.
 if [[ "$ROLE" == "user" ]]; then
   if ! command -v python3 >/dev/null 2>&1; then
     warn "python3 not found — needed for axl/mcp-router.py. brew install python"
   else
     if ! python3 -c "import aiohttp" 2>/dev/null; then
       say "Installing aiohttp for mcp-router.py …"
-      python3 -m pip install --user --quiet aiohttp || \
-        warn "pip install aiohttp failed; you may need to: python3 -m pip install --user aiohttp"
+      if python3 -m pip install --user --quiet aiohttp 2>/dev/null; then
+        say "aiohttp installed via pip --user."
+      elif command -v conda >/dev/null 2>&1; then
+        say "pip blocked (likely PEP 668). Falling back to conda env 'openclaw-axl' …"
+        if ! conda env list | awk '{print $1}' | grep -qx "openclaw-axl"; then
+          say "Creating conda env 'openclaw-axl' with python + aiohttp …"
+          conda create -y -n openclaw-axl python=3.11 aiohttp \
+            || die "conda env create failed for 'openclaw-axl'"
+        else
+          say "Reusing conda env 'openclaw-axl'; ensuring aiohttp present …"
+          conda install -y -n openclaw-axl aiohttp >/dev/null 2>&1 || true
+        fi
+        # Resolve the env's python path (works across conda versions).
+        CONDA_PREFIX_DIR=$(conda info --envs | awk '$1=="openclaw-axl"{print $NF}')
+        if [[ -n "$CONDA_PREFIX_DIR" && -x "$CONDA_PREFIX_DIR/bin/python" ]]; then
+          echo "$CONDA_PREFIX_DIR/bin/python" > "$AXL_DIR/python-path"
+          say "Saved conda python path → .axl/python-path"
+          say "  (axl-start.sh will use: $CONDA_PREFIX_DIR/bin/python)"
+          say "  To activate manually: conda activate openclaw-axl"
+        else
+          warn "Couldn't resolve conda env python. Run: conda activate openclaw-axl, then re-run setup."
+        fi
+      else
+        warn "pip install aiohttp failed and conda not found."
+        warn "Install conda (brew install --cask miniconda) and re-run, or override with:"
+        warn "  python3 -m pip install --break-system-packages aiohttp"
+      fi
     fi
   fi
 fi
