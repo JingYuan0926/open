@@ -293,20 +293,20 @@ export default function Home() {
         </div>
       </section>
 
-      <section className="px-6 lg:px-12 pb-24">
-        <div className="max-w-7xl mx-auto">
-          <div className="bg-surface-3 rounded-3xl p-10 lg:p-14 grid lg:grid-cols-2 gap-8 items-center relative overflow-hidden">
+      <section className="px-4 sm:px-6 lg:px-12 pb-16 sm:pb-20 lg:pb-24">
+        <div className="max-w-7xl 2xl:max-w-[1440px] mx-auto">
+          <div className="bg-surface-3 rounded-3xl p-6 sm:p-10 lg:p-14 grid lg:grid-cols-2 gap-6 lg:gap-8 items-center relative overflow-hidden">
             <div>
               <span className="inline-flex items-center px-3 py-1.5 bg-surface border border-border rounded-full text-xs">
                 Get started in minutes
               </span>
-              <h2 className="mt-5 text-4xl lg:text-5xl font-bold tracking-tight leading-tight">
+              <h2 className="mt-5 text-3xl sm:text-4xl lg:text-5xl font-bold tracking-tight leading-tight">
                 Your right hand,<br />
                 powered by AI.
               </h2>
             </div>
             <div className="relative z-10">
-              <p className="text-ink-3 mb-6 max-w-md">
+              <p className="text-sm sm:text-base text-ink-3 mb-6 max-w-md">
                 Let Right Hand AI handle the work so you can focus on what matters most.
               </p>
               <button
@@ -317,8 +317,8 @@ export default function Home() {
                 <ArrowRightIcon size={16} />
               </button>
             </div>
-            <div className="absolute right-6 top-1/2 -translate-y-1/2 opacity-90 hidden md:block">
-              <div className="w-44 h-44 lg:w-56 lg:h-56 rounded-full bg-surface-2 border border-border flex items-center justify-center text-ink-2">
+            <div className="absolute right-4 sm:right-6 top-1/2 -translate-y-1/2 opacity-90 hidden md:block">
+              <div className="w-36 h-36 md:w-44 md:h-44 lg:w-56 lg:h-56 rounded-full bg-surface-2 border border-border flex items-center justify-center text-ink-2">
                 <HandIcon size={120} strokeWidth={1.25} />
               </div>
             </div>
@@ -326,8 +326,8 @@ export default function Home() {
         </div>
       </section>
 
-      <footer className="px-6 lg:px-12 py-16 border-t border-border">
-        <div className="max-w-7xl mx-auto text-center">
+      <footer className="px-4 sm:px-6 lg:px-12 py-12 sm:py-16 border-t border-border">
+        <div className="max-w-7xl 2xl:max-w-[1440px] mx-auto text-center">
           <p className="text-xs tracking-[0.2em] text-ink-3 mb-8">TRUSTED BY INNOVATIVE TEAMS</p>
           <div className="flex flex-wrap justify-center gap-x-10 gap-y-4 items-center">
             <TrustLogo icon={<SparkleIcon size={18} />} name="Acme Inc." />
