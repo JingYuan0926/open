@@ -190,7 +190,8 @@ async function broadcastChat(text: string, fromRole: string): Promise<void> {
 
   const tasks: Promise<unknown>[] = [];
   for (const [role, entry] of Object.entries(peers)) {
-    if (role === fromRole) continue;
+    // Don't skip self — looping the auto-reply through local AXL gives us
+    // a [me → all] echo on this Mac's own axl:start log too.
     if (!entry || typeof entry !== "object" || !entry.pubkey) continue;
     const url = `http://127.0.0.1:${myPort}/a2a/${entry.pubkey}`;
     const body = {
@@ -255,12 +256,15 @@ class RoleAwareExecutor implements AgentExecutor {
 
     // Pretty log line with sender attribution + timestamp. The local role
     // is rendered as "me" so each terminal naturally reads from its own POV.
+    // Outbound echo (fromRole === ROLE) renders as [me → all] — that's our
+    // own broadcast looping through local AXL back to us.
     const dim = "\x1b[2m";
     const yellow = "\x1b[1;33m";
     const cyan = "\x1b[36m";
     const reset = "\x1b[0m";
-    const fromLabel = fromRole === ROLE ? "me" : fromRole;
-    const toLabel = "me";
+    const isSelf = fromRole === ROLE;
+    const fromLabel = isSelf ? "me" : fromRole;
+    const toLabel = isSelf ? "all" : "me";
     console.log(
       `${dim}${nowIso()}${reset} ${yellow}[${fromLabel}${ccTag} → ${toLabel}]${reset} ${input}`
     );
@@ -268,27 +272,30 @@ class RoleAwareExecutor implements AgentExecutor {
     // Demo dialogue: if a role-specific chat rule matches this inbound
     // message, schedule a delayed broadcast back out so the swarm feels
     // like a real conversation. Fire-and-forget; doesn't block the reply.
-    const rule = findMatchingRule(ROLE, fromRole, input, meta);
-    if (rule) {
-      console.log(
-        `${dim}${nowIso()}${reset} ${cyan}[chat-rule]${reset} matched ${ROLE} → reply in ${rule.delayMs}ms`,
-      );
-      setTimeout(() => {
-        // Push our own reply into our recent ring too, so a local
-        // mcp-call.ts polling /messages sees it consistently.
-        recent.push({
-          seq: nextSeq++,
-          ts: nowIso(),
-          fromRole: ROLE,
-          text: rule.reply,
-          isCc: false,
-          isProgress: false,
-        });
-        while (recent.length > MAX_RECENT) recent.shift();
-        broadcastChat(rule.reply, ROLE).catch((e) =>
-          console.log(`[chat-rule] broadcast failed: ${e instanceof Error ? e.message : String(e)}`),
+    // Skip rule matching for self-echoes (no self-replies, no loops).
+    if (!isSelf) {
+      const rule = findMatchingRule(ROLE, fromRole, input, meta);
+      if (rule) {
+        console.log(
+          `${dim}${nowIso()}${reset} ${cyan}[chat-rule]${reset} matched ${ROLE} → reply in ${rule.delayMs}ms`,
         );
-      }, rule.delayMs);
+        setTimeout(() => {
+          // Push our own reply into our recent ring too, so a local
+          // mcp-call.ts polling /messages sees it consistently.
+          recent.push({
+            seq: nextSeq++,
+            ts: nowIso(),
+            fromRole: ROLE,
+            text: rule.reply,
+            isCc: false,
+            isProgress: false,
+          });
+          while (recent.length > MAX_RECENT) recent.shift();
+          broadcastChat(rule.reply, ROLE).catch((e) =>
+            console.log(`[chat-rule] broadcast failed: ${e instanceof Error ? e.message : String(e)}`),
+          );
+        }, rule.delayMs);
+      }
     }
 
     // Publish a reply.

@@ -75,7 +75,10 @@ console.log(`${dim}[mcp:call] POST ${url}${reset}`);
 async function broadcastA2A(text: string, kind: "starting" | "ack"): Promise<void> {
   const tasks: Promise<unknown>[] = [];
   for (const [role, raw] of Object.entries(peers)) {
-    if (role === myRole) continue;
+    // Don't skip self — looping through local AXL → local agent.ts gives us
+    // an "outbound echo" line on this Mac's axl:start, so each terminal
+    // shows the full conversation from its own POV (own outbound + everyone
+    // else's inbound).
     const entry = raw as PeerEntry | undefined;
     if (!entry?.pubkey) continue;
 
