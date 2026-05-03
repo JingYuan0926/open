@@ -160,15 +160,17 @@ function directiveText(): string {
 async function sendDirective(): Promise<void> {
   if (!target?.pubkey) return;
   const text = directiveText();
-  const peerEntries: { role: string; pubkey: string }[] = [
-    { role: targetRole, pubkey: target.pubkey },
-  ];
-  // Loop to self so it appears in our own axl:start as [me → <target>].
-  if (myEntry?.pubkey && myRole !== targetRole) {
-    peerEntries.push({ role: myRole, pubkey: myEntry.pubkey });
-  }
-  const tasks = peerEntries.map(({ role, pubkey }) => {
-    const url = `http://127.0.0.1:${apiPort}/a2a/${pubkey}`;
+  // Send to every peer in peers.json, including self (loopback echo) and
+  // bystanders. Each terminal renders the same message differently:
+  //   sender's screen:    [me → <target>]      magenta
+  //   target's screen:    [<sender> → me]      sender's role colour
+  //   bystander's screen: [<sender> → <target>] cyan
+  const tasks: Promise<unknown>[] = [];
+  for (const [role, raw] of Object.entries(peers)) {
+    const entry = raw as PeerEntry | undefined;
+    if (!entry?.pubkey) continue;
+
+    const url = `http://127.0.0.1:${apiPort}/a2a/${entry.pubkey}`;
     const body = {
       jsonrpc: "2.0",
       id: Date.now(),
@@ -191,13 +193,17 @@ async function sendDirective(): Promise<void> {
     };
     const ctl = new AbortController();
     const t = setTimeout(() => ctl.abort(), 5000);
-    return fetch(url, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(body),
-      signal: ctl.signal,
-    }).catch(() => undefined).finally(() => clearTimeout(t));
-  });
+    tasks.push(
+      fetch(url, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+        signal: ctl.signal,
+      })
+        .catch(() => undefined)
+        .finally(() => clearTimeout(t)),
+    );
+  }
   await Promise.all(tasks);
 }
 
