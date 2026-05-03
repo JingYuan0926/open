@@ -222,7 +222,7 @@ export function TaskCreationCard({
             minLabel={`${SPECIALISTS_MIN}`}
             maxLabel={`${SPECIALISTS_MAX}`}
             disabled={isLocked}
-            hint={isSwarm ? "Swarm mode" : "Solo"}
+            subLabel={isSwarm ? "Swarm mode" : undefined}
           />
 
           <BoxedSlider
@@ -298,7 +298,7 @@ export function TaskCreationCard({
           </div>
         )}
 
-        <div className="flex items-center gap-2 pt-1">
+        <div className="flex items-center justify-end gap-2 pt-1">
           {!address ? (
             <ConnectButton.Custom>
               {({ openConnectModal, mounted }) => (
