@@ -177,7 +177,7 @@ function AssistantDraft({
   return (
     <AssistantWrapper>
       <p className="mb-2.5">
-        <StreamingText text="Here's the plan. Tune the specialists and how fast you want it done — then post on Sepolia to invite matching specialists." />
+        <StreamingText text="Here's the plan. Tune the specialists and how fast you want it done — then invite matching specialists." />
       </p>
       <TaskCreationCard
         initialDescription={prompt}
