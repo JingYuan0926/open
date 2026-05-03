@@ -79,6 +79,27 @@ function nowIso(): string {
   return new Date().toISOString();
 }
 
+// Per-role colour scheme. Local role is always magenta (purple) — "me".
+// Other roles get fixed colours so the same role looks the same across
+// every terminal: user=green, agent-b=yellow, agent-c=blue.
+const C = {
+  reset: "\x1b[0m",
+  dim: "\x1b[2m",
+  magenta: "\x1b[35m",     // me
+  green: "\x1b[32m",       // user
+  yellow: "\x1b[1;33m",    // agent-b
+  blue: "\x1b[34m",        // agent-c
+  white: "\x1b[37m",
+};
+
+function colorForRole(role: string, localRole: string): string {
+  if (role === localRole) return C.magenta;
+  if (role === "user") return C.green;
+  if (role === "agent-b") return C.yellow;
+  if (role === "agent-c") return C.blue;
+  return C.white;
+}
+
 // In-memory ring of recent inbound A2A messages, exposed via GET /messages
 // so a local mcp-call.ts can subscribe to live cross-machine chatter while
 // it waits on a long MCP response. Pure UI plumbing.
@@ -237,11 +258,12 @@ class RoleAwareExecutor implements AgentExecutor {
       .map((p) => p.text)
       .join(" ");
 
-    // The sender embeds their role + a "cc" flag into message metadata.
+    // Sender embeds their role + flags into message metadata.
     const meta = (ctx.userMessage.metadata ?? {}) as Record<string, unknown>;
     const fromRole = typeof meta.fromRole === "string" ? meta.fromRole : "?";
     const isCc = meta.cc === true;
     const isProgress = meta.progress === true;
+    const isInternal = meta.internal === true;     // local-only AI narration
     const ccTag = isCc ? " (cc)" : "";
 
     recent.push({
@@ -254,34 +276,35 @@ class RoleAwareExecutor implements AgentExecutor {
     });
     while (recent.length > MAX_RECENT) recent.shift();
 
-    // Pretty log line with sender attribution + timestamp. The local role
-    // is rendered as "me" so each terminal naturally reads from its own POV.
-    // Outbound echo (fromRole === ROLE) renders as [me → all] — that's our
-    // own broadcast looping through local AXL back to us.
-    const dim = "\x1b[2m";
-    const yellow = "\x1b[1;33m";
-    const cyan = "\x1b[36m";
-    const reset = "\x1b[0m";
     const isSelf = fromRole === ROLE;
-    const fromLabel = isSelf ? "me" : fromRole;
-    const toLabel = isSelf ? "all" : "me";
-    console.log(
-      `${dim}${nowIso()}${reset} ${yellow}[${fromLabel}${ccTag} → ${toLabel}]${reset} ${input}`
-    );
+    const ts = nowIso();
+
+    // Internal narration: local-only "[me] doing X" line. Skip the arrow
+    // entirely — it's not a conversation, it's the AI's own monologue.
+    if (isInternal) {
+      console.log(`${C.dim}${ts}${C.reset} ${C.magenta}[me]${C.reset} ${input}`);
+    } else {
+      // Conversational line. Each role gets its own fixed colour; the
+      // local role is always rendered as "me" in magenta.
+      const fromLabel = isSelf ? "me" : fromRole;
+      const toLabel = isSelf ? "all" : "me";
+      const fromC = colorForRole(fromRole, ROLE);
+      console.log(
+        `${C.dim}${ts}${C.reset} ${fromC}[${fromLabel}${ccTag} → ${toLabel}]${C.reset} ${input}`,
+      );
+    }
 
     // Demo dialogue: if a role-specific chat rule matches this inbound
     // message, schedule a delayed broadcast back out so the swarm feels
-    // like a real conversation. Fire-and-forget; doesn't block the reply.
-    // Skip rule matching for self-echoes (no self-replies, no loops).
-    if (!isSelf) {
+    // like a real conversation. Skip self-echoes (no self-replies) and
+    // internal narration (it's not addressed to anyone).
+    if (!isSelf && !isInternal) {
       const rule = findMatchingRule(ROLE, fromRole, input, meta);
       if (rule) {
         console.log(
-          `${dim}${nowIso()}${reset} ${cyan}[chat-rule]${reset} matched ${ROLE} → reply in ${rule.delayMs}ms`,
+          `${C.dim}${ts}${C.reset} ${C.dim}[chat-rule] matched ${ROLE} → reply in ${rule.delayMs}ms${C.reset}`,
         );
         setTimeout(() => {
-          // Push our own reply into our recent ring too, so a local
-          // mcp-call.ts polling /messages sees it consistently.
           recent.push({
             seq: nextSeq++,
             ts: nowIso(),

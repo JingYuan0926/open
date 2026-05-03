@@ -273,20 +273,29 @@ async function broadcastA2A(text: string): Promise<void> {
   await Promise.all(tasks);
 }
 
+// ANSI helpers for the local "[me] doing X" purple narration line.
+const PURPLE = "\x1b[35m";
+const DIM = "\x1b[2m";
+const ANSI_RESET = "\x1b[0m";
+
+function narrateLocal(text: string): void {
+  const ts = new Date().toISOString();
+  console.log(`${DIM}${ts}${ANSI_RESET} ${PURPLE}[me]${ANSI_RESET} ${text}`);
+}
+
 async function withProgress<T>(
   label: string,
   fn: (progress: ScriptProgress) => Promise<T>,
 ): Promise<T> {
   const progress = newProgress(`${label} starting`);
-  console.log(`[progress] tracking ${label} (broadcast on every step + every ${PROGRESS_MS / 1000}s heartbeat)`);
+  narrateLocal(`tracking ${label} — broadcasting each step + ${PROGRESS_MS / 1000}s heartbeat`);
 
   let lastBroadcast = "";
   let lastBroadcastAt = 0;
 
-  // Every 1s, check if the script's status has changed. If yes — fire
-  // immediately (so each step transition 1/6 → 2/6 → … reaches every peer
-  // within a second). If unchanged but >= PROGRESS_MS since last fire,
-  // send a heartbeat so the audience always has a recent line.
+  // Every 1s, check if the script's status has changed. If yes — narrate
+  // locally as a [me] line (purple) and broadcast to peers. If unchanged
+  // but stale, send a heartbeat ping.
   const tickId = setInterval(() => {
     const now = Date.now();
     const changed = progress.status !== lastBroadcast;
@@ -294,10 +303,14 @@ async function withProgress<T>(
     if (!changed && !stale) return;
     const elapsed = Math.floor((now - progress.startedAt) / 1000);
     const text = `${label} · ${progress.status} · ${elapsed}s elapsed`;
+    if (changed) {
+      // Local AI monologue — appears in this Mac's axl:start as [me] in purple.
+      narrateLocal(progress.status);
+    }
     lastBroadcast = progress.status;
     lastBroadcastAt = now;
     broadcastA2A(text).catch((e) =>
-      console.log(`[progress] ping failed: ${e instanceof Error ? e.message : String(e)}`),
+      console.log(`${DIM}[progress] ping failed: ${e instanceof Error ? e.message : String(e)}${ANSI_RESET}`),
     );
   }, 1000);
 
@@ -306,7 +319,7 @@ async function withProgress<T>(
   } finally {
     clearInterval(tickId);
     const total = Math.floor((Date.now() - progress.startedAt) / 1000);
-    console.log(`[progress] ${label} ended after ${total}s — last status: ${progress.status}`);
+    narrateLocal(`${label} done — last status: ${progress.status} (${total}s total)`);
     broadcastA2A(`${label} done · ${progress.status} · ${total}s total`).catch(() => undefined);
   }
 }
