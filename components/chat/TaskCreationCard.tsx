@@ -233,7 +233,6 @@ export function TaskCreationCard({
             minLabel={`${DEADLINE_MIN} min`}
             maxLabel={`${DEADLINE_MAX} min`}
             disabled={isLocked}
-            hint={`Auto-cancels around ${deadlineLabel}`}
           />
         </div>
 
