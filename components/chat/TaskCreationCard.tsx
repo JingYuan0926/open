@@ -35,17 +35,24 @@ export function suggestSkills(prompt: string): string {
 
 type Step = "editing" | "awaiting" | "confirming" | "posted" | "error";
 
-const BUDGET_MIN = 0.001;
-const BUDGET_MAX = 0.05;
-const BUDGET_STEP = 0.001;
 const DEADLINE_MIN = 5;
 const DEADLINE_MAX = 120;
 const DEADLINE_STEP = 5;
 const SPECIALISTS_MIN = 1;
 const SPECIALISTS_MAX = 5;
 
+// Pricing: 0.001 ETH base per specialist, scaled by an urgency multiplier
+// that runs from 1.0 at the longest deadline to 2.0 at the shortest.
+const BASE_RATE_ETH = 0.001;
+
+function computeTotalEth(specialists: number, deadlineMinutes: number): number {
+  const urgency =
+    1 + (DEADLINE_MAX - deadlineMinutes) / (DEADLINE_MAX - DEADLINE_MIN);
+  return Number((specialists * BASE_RATE_ETH * urgency).toFixed(4));
+}
+
 function fmtEth(n: number): string {
-  return n.toFixed(3).replace(/\.?0+$/, "") || "0";
+  return n.toFixed(4).replace(/\.?0+$/, "") || "0";
 }
 
 export function TaskCreationCard({
@@ -66,11 +73,11 @@ export function TaskCreationCard({
     () => initialSkills ?? suggestSkills(initialDescription),
     [initialSkills, initialDescription],
   );
-  const [budgetEth, setBudgetEth] = React.useState(0.005);
   const [deadlineMinutes, setDeadlineMinutes] = React.useState(30);
   const [maxSpecialists, setMaxSpecialists] = React.useState(
     Math.min(SPECIALISTS_MAX, Math.max(SPECIALISTS_MIN, initialMaxSpecialists)),
   );
+  const totalCostEth = computeTotalEth(maxSpecialists, deadlineMinutes);
   const [validationError, setValidationError] = React.useState<string | null>(null);
 
   const {
