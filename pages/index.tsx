@@ -100,6 +100,7 @@ function OrchestratorDiagram() {
       <svg
         className="absolute inset-0 w-full h-full"
         viewBox="0 0 100 100"
+        overflow="visible"
         aria-hidden
       >
         <g stroke="#D1D5DB" strokeWidth="0.25" strokeDasharray="0.7 0.7" fill="none">
@@ -109,7 +110,7 @@ function OrchestratorDiagram() {
           <line x1="50" y1="50" x2="20" y2="62" />
           <line x1="50" y1="50" x2="80" y2="62" />
           <line x1="50" y1="50" x2="50" y2="84" />
-          <line x1="50" y1="50" x2="96" y2="50" />
+          <line x1="50" y1="50" x2="113" y2="50" />
         </g>
       </svg>
 
@@ -121,7 +122,7 @@ function OrchestratorDiagram() {
       <DiagCard top="62%" left="80%" icon={<ShieldIcon />} title="Reviewer AI" subtitle="Checks quality" />
       <DiagCard top="84%" left="50%" icon={<FileIcon />} title="Summarizer AI" subtitle="Summarizes the output" />
 
-      <div className="absolute z-10" style={{ top: "50%", left: "98%", transform: "translate(-50%, -50%)" }}>
+      <div className="absolute z-10" style={{ top: "50%", left: "115%", transform: "translate(-50%, -50%)" }}>
         <div className="bg-surface rounded-2xl px-4 py-3 border border-border shadow-sm text-center min-w-[110px]">
           <div className="flex justify-center mb-1.5 w-8 h-8 mx-auto rounded-full bg-ink text-white items-center">
             <CheckIcon size={16} />
@@ -172,7 +173,7 @@ export default function Home() {
     <div className="min-h-screen bg-bg text-ink">
       <section className="px-6 lg:px-12 pt-16 pb-24">
         <div className="max-w-7xl mx-auto grid lg:grid-cols-2 gap-12 items-center">
-          <div>
+          <div className="lg:pl-8">
             <span className="inline-flex items-center gap-2 px-3 py-1.5 bg-surface border border-border rounded-full text-xs text-ink-2">
               <SparkleIcon size={14} />
               Multiple AI. One purpose.
