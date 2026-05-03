@@ -636,6 +636,101 @@ The repo runs **Tailwind v4** (`@import "tailwindcss"` in `globals.css`, `@tailw
 
 ---
 
+# x402 payments (working, CLI-only)
+
+Canonical Coinbase x402 wired against the public hosted facilitator at `https://x402.org/facilitator`. Settles **USDC on Base Sepolia (eip155:84532)** using the `exact` scheme + EIP-3009 `transferWithAuthorization`. The client signs an off-chain authorization, the facilitator pays the gas — the user's wallet only needs USDC, no ETH.
+
+Status: **server gate works, CLI client works, on-chain settlement verified**. Not exposed in the React UI yet — invoked from the terminal.
+
+## Why Base Sepolia, not Sepolia / 0G
+
+The public facilitator at `x402.org/facilitator` only supports these networks:
+
+```
+exact  eip155:84532        ← Base Sepolia  (the one we use)
+upto   eip155:84532
+exact  solana / algorand / aptos / stellar testnets
+```
+
+Ethereum Sepolia (`eip155:11155111`) is **not** supported, and neither is 0G Galileo. To use those you'd have to self-host a facilitator — the chains are EVM, the asset would still need to be EIP-3009-compliant USDC. We chose to keep chains split: **Sepolia for ENS, 0G Galileo for iNFTs, Base Sepolia for x402**. The same `0G_PRIVATE_KEY` works on all three (it's just an EVM secp256k1 keypair), so the user identity is unified even though the chains differ.
+
+## File map
+
+```
+proxy.ts                         # root-level Next 16 proxy (renamed from middleware.ts).
+                                 # Gates GET /api/x402/news, registers ExactEvmScheme on
+                                 # eip155:84532, points the resource server at the public
+                                 # x402.org/facilitator. payTo defaults to vitalik.eth so
+                                 # tests visibly transfer to a non-payer address — override
+                                 # via X402_PAY_TO=0x… env var (requires dev server restart).
+pages/api/x402/news.ts           # the gated resource handler. By the time control reaches
+                                 # it, the facilitator has already verified + settled.
+                                 # Body is a stub for the demo.
+scripts/x402-pay.ts              # CLI client. Reads 0G_PRIVATE_KEY, derives the address,
+                                 # uses @x402/fetch + ExactEvmScheme(client) + a viem
+                                 # local account. Prints three roundtrips: plain GET (402),
+                                 # wrapped GET (200), and the decoded PAYMENT-RESPONSE
+                                 # header carrying the on-chain Base Sepolia tx hash.
+```
+
+## npm script
+
+| command | purpose |
+|---|---|
+| `npm run x402:pay` | end-to-end test against `http://localhost:3000`. Override host via `X402_TARGET=https://… npm run x402:pay`. |
+
+## Wire shape (verified end-to-end)
+
+1. **`GET /api/x402/news`** with no payment header → `proxy.ts` returns **HTTP 402** with header `payment-required: <base64 JSON>`. Decoded body:
+   ```json
+   {
+     "x402Version": 2,
+     "error": "Payment required",
+     "resource": { "url": "…/api/x402/news", "description": "…" },
+     "accepts": [{
+       "scheme": "exact",
+       "network": "eip155:84532",
+       "amount": "10000",                                                      // 0.01 USDC (6 decimals)
+       "asset":  "0x036CbD53842c5426634e7929541eC2318f3dCF7e",                 // Base Sepolia USDC
+       "payTo":  "0xd8dA6BF26964aF9D7eEd9e03E53415D37aA96045",                 // vitalik.eth (default)
+       "maxTimeoutSeconds": 300,
+       "extra":  { "name": "USDC", "version": "2" }
+     }]
+   }
+   ```
+
+2. **`@x402/fetch`** in [scripts/x402-pay.ts](scripts/x402-pay.ts) catches the 402, signs the EIP-712 EIP-3009 `TransferWithAuthorization` typed data with the viem `LocalAccount` derived from `0G_PRIVATE_KEY`, base64-encodes `{scheme, network, payload:{signature, authorization}}`, and resubmits as `payment-signature: <base64>`.
+
+3. **`proxy.ts` calls the facilitator** at `x402.org/facilitator` — `POST /verify` (signature recovers, balance ≥ value, nonce unused, validBefore not passed) then `POST /settle`. The facilitator broadcasts `USDC.transferWithAuthorization(from, to, value, validAfter, validBefore, nonce, v, r, s)` from its own wallet (`0xd407e409E34E0b9afb99EcCeb609bDbcD5e7f1bf`) and pays the gas.
+
+4. **Forwards to `pages/api/x402/news.ts`**, returning HTTP 200 + a `payment-response: <base64 JSON>` header:
+   ```json
+   { "success": true, "payer": "0x9787…A8f1",
+     "transaction": "0xb1c76e1c91dfb3b77bc49a3984b0408efc406ffcabda9d3d73b448e5bf81792b",
+     "network": "eip155:84532" }
+   ```
+   That tx hash is real — verify on [sepolia.basescan.org](https://sepolia.basescan.org/tx/0xb1c76e1c91dfb3b77bc49a3984b0408efc406ffcabda9d3d73b448e5bf81792b). Block 40991527, status success, 2 events: `Transfer` + EIP-3009 `AuthorizationUsed`.
+
+## Required setup
+
+| thing | how to get it |
+|---|---|
+| Base Sepolia USDC in the `0G_PRIVATE_KEY` wallet | [faucet.circle.com](https://faucet.circle.com) — pick Base Sepolia, paste your address. Each call costs $0.01 USDC. |
+| Base Sepolia ETH for gas | **not needed** — facilitator pays gas. That's the whole point of EIP-3009. |
+| `0G_PRIVATE_KEY` in `.env` | already used everywhere else (0G iNFT mint, 0G Compute) — same key, works on Base Sepolia because all EVM chains share secp256k1 keypairs. |
+
+## Gotchas
+
+- **Hosted facilitator only does Base Sepolia for EVM.** Querying `https://www.x402.org/facilitator/supported` confirms it: `exact eip155:84532` is the only EVM testnet entry. To use Sepolia or 0G Galileo you'd have to self-host a facilitator — that's a separate Next.js route holding a wallet that pays gas, calling `transferWithAuthorization` directly on the chain's USDC contract. Doable, ~80 lines, but a wallet to keep funded.
+- **`proxy.ts` is the new `middleware.ts`.** Next.js 16 deprecated/renamed the file convention to `proxy.ts` and the export from `middleware` to `proxy`. The old name still works as a deprecation alias — DIVE's repo on Next 16.2.2 still uses it — but don't add new code under the old name.
+- **Same key as DIVE's hardcoded demo `payTo`.** This repo's `0G_PRIVATE_KEY` derives to `0x9787cfF89D30bB6Ae87Aaad9B3a02E77B5caA8f1`, which happens to be the address DIVE hardcoded as their default `payTo` in their middleware. Coincidence (probably copy-paste lineage somewhere). The default `PAY_TO` in our [proxy.ts](proxy.ts) is now vitalik.eth so tests transfer to a different address — change via `X402_PAY_TO=0x…` env var if you want a real recipient. **And rotate this key before mainnet anything** — if the same key is ever funded on a public chain, anyone with the repo can drain it.
+- **`payTo` change requires dev server restart**, despite Next.js hot-reloading. The proxy reads `process.env.X402_PAY_TO` at module-load time and the facilitator sync (the `syncFacilitatorOnStart` step) caches the registration. Edit `.env` → restart `npm run dev`.
+- **`@x402/*` packages need `--legacy-peer-deps`** to install in this repo. `@0gfoundation/0g-ts-sdk@1.2.8` pins `ethers@6.13.1` as a peer dep; `@x402/*` doesn't conflict directly but the resolver still trips. Use `npm install --legacy-peer-deps @x402/next @x402/core @x402/evm @x402/fetch`.
+- **The PAYMENT-REQUIRED is a header, not a body.** The 402 response body is `{}`; all the payment requirements live in the `payment-required` base64 header. Likewise the on-chain receipt comes back in `payment-response`. Don't look in the body for either.
+- **No frontend.** Deliberately CLI-only — see [scripts/x402-pay.ts](scripts/x402-pay.ts). To add a UI later, the cleanest path is `wrapFetchWithPayment(fetch, x402Client)` from `@x402/fetch` driven by the connected wagmi wallet (need to add Base Sepolia to the chains array in [lib/networkConfig.ts](lib/networkConfig.ts)).
+
+---
+
 # Phase 2b — ENS task marketplace + royalties (next)
 
 Phase 2a wires execution. Phase 2b turns the demo into the real product flow: **a user posts a task on ENS, OpenClaw specialists bid/sign in, the elected swarm coordinates over AXL, and MCP performs the actual work on the user's machine.**
