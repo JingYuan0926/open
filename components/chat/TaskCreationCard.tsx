@@ -163,10 +163,10 @@ export function TaskCreationCard({
       setValidationError("Description is required.");
       return;
     }
-    const ts = Math.floor(Date.now() / 1000) + deadlineMinutes * 60;
+    const ts = Math.floor(Date.now() / 1000) + etaSeconds;
     let budgetWei: bigint;
     try {
-      budgetWei = parseEther(totalCostEth.toString());
+      budgetWei = parseEther(breakdown.total.toString());
     } catch {
       setValidationError("Invalid budget.");
       return;
@@ -235,19 +235,21 @@ export function TaskCreationCard({
             minLabel={`${SPECIALISTS_MIN}`}
             maxLabel={`${SPECIALISTS_MAX}`}
             disabled={isLocked}
+            hint={isSwarm ? "Swarm mode" : "Solo"}
           />
 
           <BoxedSlider
-            label="Deadline"
-            value={`${deadlineMinutes} min`}
-            min={DEADLINE_MIN}
-            max={DEADLINE_MAX}
-            step={DEADLINE_STEP}
-            raw={deadlineMinutes}
-            onChange={(v) => setDeadlineMinutes(Math.round(v))}
-            minLabel={`${DEADLINE_MIN} min`}
-            maxLabel={`${DEADLINE_MAX} min`}
+            label="Speed up"
+            value={`${speedLevel}×`}
+            min={SPEED_MIN}
+            max={SPEED_MAX}
+            step={1}
+            raw={speedLevel}
+            onChange={(v) => setSpeedLevel(Math.round(v))}
+            minLabel={`${SPEED_MIN}×`}
+            maxLabel={`${SPEED_MAX}×`}
             disabled={isLocked}
+            hint={`≈ ${fmtTime(etaSeconds)} to complete`}
           />
         </div>
 
@@ -255,14 +257,33 @@ export function TaskCreationCard({
           <div className="text-[11.5px] uppercase tracking-wide text-ink-3 mb-1.5">
             Total cost
           </div>
-          <div className="rounded-md border border-border bg-surface-2 px-3.5 py-3 flex items-center justify-between">
-            <span className="text-[12.5px] text-ink-2">
-              {maxSpecialists} specialist{maxSpecialists === 1 ? "" : "s"} ·{" "}
-              {deadlineMinutes} min deadline
-            </span>
-            <span className="text-[16px] font-mono font-semibold text-ink tabular-nums">
-              {fmtEth(totalCostEth)} USDC
-            </span>
+          <div className="rounded-md border border-border bg-surface-2 px-3.5 py-3 grid gap-1 text-[12.5px] text-ink-2">
+            <div className="flex items-center justify-between">
+              <span>Specialists × {maxSpecialists}</span>
+              <span className="font-mono tabular-nums text-ink">
+                {fmtEth(breakdown.specialistsCost)} USDC
+              </span>
+            </div>
+            <div className="flex items-center justify-between">
+              <span>Speed boost × {speedLevel}</span>
+              <span className="font-mono tabular-nums text-ink">
+                +{fmtEth(breakdown.speedCost)} USDC
+              </span>
+            </div>
+            {isSwarm && (
+              <div className="flex items-center justify-between">
+                <span>Swarm mode</span>
+                <span className="font-mono tabular-nums text-ink">
+                  +{fmtEth(breakdown.swarmCost)} USDC
+                </span>
+              </div>
+            )}
+            <div className="border-t border-border mt-1.5 pt-2 flex items-center justify-between">
+              <span className="text-[13px] font-medium text-ink">Total</span>
+              <span className="text-[16px] font-mono font-semibold text-ink tabular-nums">
+                {fmtEth(breakdown.total)} USDC
+              </span>
+            </div>
           </div>
         </div>
 
