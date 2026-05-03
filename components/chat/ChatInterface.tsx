@@ -147,7 +147,7 @@ function UserBubble({ content }: { content: string }) {
 
 function StreamingText({
   text,
-  speed = 55,
+  speed = 20,
 }: {
   text: string;
   speed?: number;
@@ -239,7 +239,7 @@ function ThinkingIndicator({ prompt }: { prompt: string }) {
         </span>
       </div>
       <p className="text-[12.5px] text-ink-3 italic leading-snug pl-[18px]">
-        <StreamingText key={active} text={current.commentary} speed={45} />
+        <StreamingText key={active} text={current.commentary} speed={15} />
       </p>
     </div>
   );
