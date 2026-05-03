@@ -379,7 +379,7 @@ function WithdrawCard() {
         <section className="rounded-xl border border-emerald-300 dark:border-emerald-800 bg-emerald-50/50 dark:bg-emerald-950/20 p-4 flex items-center justify-between gap-3">
             <div>
                 <div className="text-xs text-zinc-500">Withdrawable balance</div>
-                <div className="text-lg font-semibold">{formatEther(bal)} ETH</div>
+                <div className="text-lg font-semibold">{formatEther(bal)} USDC</div>
             </div>
             <div className="flex items-center gap-3">
                 {hash && <ExplorerLink hash={hash} />}
